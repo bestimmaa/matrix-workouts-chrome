@@ -1,7 +1,9 @@
 import { findWorkout, loadCachedWorkouts } from "../parse/index.js";
-import { WorkoutParseError } from "../parse/types.js";
+import { WorkoutParseError, type Workout } from "../parse/types.js";
+import { ApiError } from "../api/client.js";
 import { renderDashboard } from "../ui/dashboard.js";
 import { el } from "../ui/svg.js";
+import { loadHistory } from "./history.js";
 import { createSurface, type Surface } from "./mount.js";
 import { observeLocation, workoutIdFromPath } from "./route.js";
 
@@ -16,6 +18,11 @@ import { observeLocation, workoutIdFromPath } from "./route.js";
 let surface: Surface | null = null;
 /** The workout currently on screen, so a poll tick does not re-render needlessly. */
 let renderedId: string | null = null;
+/**
+ * History fetched from the API this session. In memory only, never persisted — it
+ * is the user's health data and it is one request away whenever it is wanted again.
+ */
+let history: Workout[] | null = null;
 
 function ensureSurface(): Surface {
   if (!surface) surface = createSurface();
@@ -28,7 +35,7 @@ function showStock(): void {
   renderedId = null;
 }
 
-function problem(title: string, message: string): HTMLElement {
+function shell(children: (Node | string)[]): HTMLElement {
   const back = el("button", { type: "button", text: "Show stock page" });
   back.addEventListener("click", showStock);
   return el("div", { class: "wrap" }, [
@@ -37,8 +44,68 @@ function problem(title: string, message: string): HTMLElement {
       el("span", { class: "spacer" }),
       back,
     ]),
-    el("div", { class: "problem" }, [el("h1", { text: title }), el("p", { text: message })]),
+    ...children,
   ]);
+}
+
+function problem(title: string, message: string, action?: HTMLElement): HTMLElement {
+  return shell([
+    el("div", { class: "problem" }, [
+      el("h1", { text: title }),
+      el("p", { text: message }),
+      ...(action ? [action] : []),
+    ]),
+  ]);
+}
+
+/** The workout is not in this browser's cache; offer to go and get it. */
+function offerHistory(view: Surface, id: string): void {
+  const button = el("button", { type: "button", text: "Load full history" });
+
+  button.addEventListener("click", () => {
+    button.disabled = true;
+    button.textContent = "Loading…";
+
+    loadHistory(localStorage)
+      .then((result) => {
+        history = result.workouts;
+        const workout = findWorkout(history, id);
+        if (workout) {
+          view.render(renderDashboard(workout, { onShowStock: showStock }));
+          renderedId = id;
+          return;
+        }
+        view.render(
+          problem(
+            "That workout is not in your history either",
+            `The API returned ${result.workouts.length} workouts and none of them has this id. ` +
+              (result.skipped > 0 ? `${result.skipped} record(s) could not be read. ` : "") +
+              (result.truncated ? "The response also reported more history than it sent. " : "") +
+              "The link may be for a different account.",
+          ),
+        );
+      })
+      .catch((error: unknown) => {
+        const message =
+          error instanceof ApiError || error instanceof WorkoutParseError
+            ? error.message
+            : "Something went wrong fetching your history.";
+        const retry = el("button", { type: "button", text: "Try again" });
+        retry.addEventListener("click", () => offerHistory(view, id));
+        view.render(problem("Could not load your history", message, retry));
+      });
+  });
+
+  view.render(
+    problem(
+      "That workout is not cached in this browser",
+      "The site keeps only about the current week in local storage and does not fetch " +
+        "older workouts on demand — which is why its own page shows an error for them. " +
+        "It can be fetched from the workout API instead, using the sign-in this browser " +
+        "already holds. Nothing is stored: the history stays in memory for this tab only.",
+      button,
+    ),
+  );
 }
 
 function renderRoute(pathname: string): void {
@@ -54,21 +121,16 @@ function renderRoute(pathname: string): void {
   const view = ensureSurface();
 
   try {
-    const workout = findWorkout(loadCachedWorkouts(localStorage), id);
-    if (!workout) {
-      // The app caches roughly the current week. Older workouts are only in the
-      // HTTP API, which this version does not talk to yet.
-      view.render(
-        problem(
-          "That workout is not cached in this browser",
-          "The site keeps only about the current week in local storage, and it does not " +
-            "fetch older workouts on demand — which is why its own page shows an error " +
-            "for them too. Open a workout from the current week, or wait for the history " +
-            "backfill that reads the full record from the API.",
-        ),
-      );
-    } else {
+    const workout =
+      findWorkout(loadCachedWorkouts(localStorage), id) ?? (history ? findWorkout(history, id) : null);
+
+    if (workout) {
       view.render(renderDashboard(workout, { onShowStock: showStock }));
+      renderedId = id;
+    } else {
+      offerHistory(view, id);
+      // Not marked as rendered: the view is an offer, not the workout.
+      renderedId = null;
     }
   } catch (error) {
     const message =
@@ -77,9 +139,9 @@ function renderRoute(pathname: string): void {
         : "The stored workout data was not in a shape this extension understands. " +
           "The site may have changed its format.";
     view.render(problem("Could not read this workout", message));
+    renderedId = null;
   }
 
-  renderedId = id;
   view.show();
 }
 

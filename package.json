@@ -5,8 +5,8 @@
   "type": "module",
   "description": "Chrome extension that replaces the Matrix workout dashboard with the full recorded telemetry",
   "scripts": {
-    "dev": "vite build --watch --mode development",
-    "build": "vite build",
+    "dev": "vite build --mode content --watch",
+    "build": "vite build --mode content && vite build --mode background",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

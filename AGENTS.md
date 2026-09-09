@@ -20,8 +20,14 @@ Run these before committing. **`npm test` must pass.**
 ```
 npm test            # vitest run
 npm run typecheck   # tsc --noEmit
-npm run build       # vite build -> dist/
+npm run build       # both targets -> dist/
 ```
+
+`npm run build` runs **two** vite passes, because rollup takes one output format per
+build and the two entry points need different ones: the content script must be a
+plain IIFE (MV3 content scripts are not modules), while the service worker is
+declared `"type": "module"`. The second pass sets `emptyOutDir: false` so it does
+not delete the first.
 
 All three must pass before committing.
 
@@ -48,8 +54,13 @@ Built, 95 tests green: the parse layer (`src/parse/`), the chart geometry layer
 The extension loads, takes over `/workouts/:id`, and renders every fixture in both
 themes.
 
-Not built: the HTTP API client, and therefore any history beyond the current week —
-a workout outside the cache currently renders an explanation, not a chart.
+Also built: the HTTP API client (`src/api/`) and the service worker that carries its
+one request, so a workout outside the cached week can be fetched on demand — the
+detail view offers a **Load full history** button instead of an error.
+
+Not built: anything that uses history in aggregate (trends across rides, a power
+curve, sprint-to-sprint comparison). The client returns the whole list; only the one
+requested workout is currently rendered from it.
 
 **Scope: the indoor bike only.** Both bike types (upright and recumbent) are
 covered by fixtures and are what this is designed and verified against. Treadmill
@@ -104,6 +115,23 @@ GET  /exerciser/{id}
 `GET /workouts/{id}` is in the bundle but answers 404; fetch the list and filter.
 The list response is `{ workouts, messages, paging }` and returns complete records
 including every interval — one request gets everything.
+
+Implemented in `src/api/`. Three things about it are deliberate:
+
+- **The request goes through the service worker, not the content script.** Content
+  script `fetch` is subject to CORS as the *page's* origin regardless of
+  `host_permissions`, so a call to `apollo.jfit.co` would depend on response headers
+  we do not control. From the worker it runs with the extension's host permissions
+  and does not. `src/content/history.ts` implements `FetchLike` over
+  `chrome.runtime.sendMessage`, so `fetchWorkoutHistory` is the same code in tests
+  (with a stub) and in the browser. The worker hard-allowlists the API origin: the
+  url arrives from a content script, which shares a page with code we do not control.
+- **Paging is not followed.** The endpoint has returned every record in one response
+  on every account seen. Inventing page parameters against an undocumented API is a
+  good way to silently truncate someone's history, so a `paging.total` larger than
+  what arrived surfaces as `truncated` instead.
+- **One bad record does not cost the user their history.** Records that fail to parse
+  are counted in `skipped` and the rest are returned.
 
 **The cache holds only the current week.** Measured on one account: `localStorage`
 had 2 workouts while the API had 43. Worse, the SPA does not fetch on demand — a
@@ -279,7 +307,8 @@ src/
   parse/       localStorage blob -> typed Workout model (pure, no DOM)
   charts/      SVG chart modules (pure: data + scale -> SVG element)
   ui/          layout, readout console, table view
-  api/         optional jfit HTTP client (history backfill)
+  api/         jfit HTTP client (credentials + history backfill), pure and DOM-free
+  background/  MV3 service worker: carries the one cross-origin request
 fixtures/      real captured workout records — see below
 ```
 
@@ -410,9 +439,17 @@ This handles personal health data.
 
 - **No telemetry, no analytics, no external requests** other than to `jfit.co`
   hosts the user is already logged into.
-- Never log or persist the bearer token, email, or profile fields.
-- Keep `host_permissions` scoped to `matrixworkouts.jfit.co` (plus `orion`/`apollo`
-  only if and when the API client is actually built). No `<all_urls>`.
+- Never log or persist the bearer token, email, or profile fields. `redact()` in
+  `src/api/credentials.ts` exists because a transport error's message can contain the
+  request; every error that escapes the client passes through it, and a test asserts
+  the token cannot appear in a thrown message. **No fixture in this repo carries a
+  real token, and none ever should.**
+- Fetched history lives in a module variable for the life of the tab and is never
+  written to `chrome.storage`. It is health data and it is one request away.
+- `host_permissions` is exactly `https://apollo.jfit.co/*` — nothing else, and no
+  `<all_urls>`. The content script reaches `matrixworkouts.jfit.co` through its
+  `matches` pattern, which needs no host permission. `orion.jfit.co` answers 403 and
+  must not be added.
 - No remote code. MV3 forbids it and so do we.
 - Anything written to `chrome.storage` must be user-visible and clearable.
 
