@@ -19,3 +19,13 @@ declare namespace chrome.runtime {
     ): void;
   };
 }
+
+declare namespace chrome.action {
+  const onClicked: {
+    addListener(listener: (tab: { id?: number; url?: string }) => void): void;
+  };
+}
+
+declare namespace chrome.tabs {
+  function sendMessage(tabId: number, message: unknown): Promise<unknown>;
+}

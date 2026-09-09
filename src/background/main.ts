@@ -71,3 +71,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   forward(message).then(sendResponse);
   return true; // keep the channel open for the async reply
 });
+
+/**
+ * Toolbar icon: the one entry point that works from anywhere on the site, without
+ * depending on the user spotting a pill in a corner. `chrome.action.onClicked`
+ * only fires here, so the click has to be relayed to the content script.
+ *
+ * The `activeTab` permission is what makes `tabs.sendMessage` legal, and it is
+ * granted only for the tab the user just clicked on, only for as long as they stay
+ * there — a much tighter grant than a host permission for the whole site.
+ */
+chrome.action.onClicked.addListener((tab) => {
+  if (tab.id === undefined) return;
+  // The content script is only present on the site; elsewhere this is a no-op.
+  chrome.tabs.sendMessage(tab.id, { type: "toggleSurface" }).catch(() => {});
+});

@@ -151,9 +151,47 @@ function renderRoute(pathname: string): void {
   view.expand();
 }
 
+/**
+ * Toolbar-icon toggle. The pill only exists once the view has been collapsed, and
+ * only on the detail route; this works from anywhere on the site and is where a
+ * user looks for an extension's UI.
+ */
+function toggle(): void {
+  if (surface?.visible) {
+    surface.collapse();
+    return;
+  }
+  if (surface) {
+    surface.expand();
+    return;
+  }
+  // Nothing mounted yet — off the detail route, or the surface was destroyed.
+  const id = workoutIdFromPath(location.pathname);
+  if (id === null) {
+    const view = ensureSurface();
+    view.render(
+      problem(
+        "Open a workout first",
+        "This view replaces the workout detail page. Open any workout from the list, " +
+          "and it will take over automatically — or use this button again there.",
+      ),
+    );
+    view.expand();
+    return;
+  }
+  renderRoute(location.pathname);
+}
+
 function start(): void {
   renderRoute(location.pathname);
   observeLocation(({ pathname }) => renderRoute(pathname));
+
+  chrome.runtime.onMessage.addListener((message) => {
+    if (typeof message === "object" && message !== null && (message as { type?: string }).type === "toggleSurface") {
+      toggle();
+    }
+    return false;
+  });
 }
 
 start();

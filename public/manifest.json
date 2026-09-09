@@ -1,9 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Full Matrix Workouts",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Replaces the Matrix workout dashboard with the full recorded telemetry: power, resistance and cadence.",
+  "permissions": ["activeTab"],
   "host_permissions": ["https://apollo.jfit.co/*"],
+  "action": {
+    "default_title": "Full Matrix Workouts — show the full telemetry"
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"

@@ -342,6 +342,12 @@ Decisions taken up front (revisit deliberately, don't drift):
   full-viewport host would keep swallowing clicks meant for the page underneath.
   Leaving the workout route destroys the surface outright; the pill must never
   float over a page this extension does not handle.
+- **The toolbar icon is the entry point that always works.** The pill only exists
+  once the view has been collapsed, and only on the detail route. `chrome.action`
+  fires in the service worker, which relays a `toggleSurface` message to the content
+  script. Off the detail route it explains itself rather than doing nothing. Note
+  Chrome hides unpinned extensions behind the puzzle-piece menu — the icon has to be
+  pinned to be the discoverable thing it is meant to be.
 - **No webfonts.** The prototype pulls Barlow and IBM Plex Mono from Google Fonts;
   the extension makes no external request, so `src/ui/styles.css` is system stacks
   only. Do not reintroduce a remote font.
@@ -455,7 +461,9 @@ This handles personal health data.
 - Fetched history lives in a module variable for the life of the tab and is never
   written to `chrome.storage`. It is health data and it is one request away.
 - `host_permissions` is exactly `https://apollo.jfit.co/*` — nothing else, and no
-  `<all_urls>`. The content script reaches `matrixworkouts.jfit.co` through its
+  `<all_urls>`. The toolbar action uses **`activeTab`**, not a host permission for
+  the site: it grants access only to the tab the user just clicked, only while they
+  are on it. Do not trade it for a broader grant to save a line of code. The content script reaches `matrixworkouts.jfit.co` through its
   `matches` pattern, which needs no host permission. `orion.jfit.co` answers 403 and
   must not be added.
 - No remote code. MV3 forbids it and so do we.
