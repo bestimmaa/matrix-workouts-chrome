@@ -49,9 +49,16 @@ The extension loads, takes over `/workouts/:id`, and renders every fixture in bo
 themes.
 
 Not built: the HTTP API client, and therefore any history beyond the current week —
-a workout outside the cache currently renders an explanation, not a chart. Also
-absent: a treadmill or rower fixture, so the machine-type branches in
-`src/charts/plan.ts` are reasoned but unverified.
+a workout outside the cache currently renders an explanation, not a chart.
+
+**Scope: the indoor bike only.** Both bike types (upright and recumbent) are
+covered by fixtures and are what this is designed and verified against. Treadmill
+and rower are explicitly *not* a goal right now — do not build for them, and do not
+go capturing fixtures for them. The parse layer stays machine-agnostic because that
+costs nothing and the upstream shape is shared, and `src/charts/plan.ts` keeps its
+speed/incline fallbacks (guarded, tested as inert on bikes) so a non-bike record
+degrades into something readable rather than an exception. Neither is a promise
+that those machines are supported.
 
 **The charting framework question is settled: there isn't one.** See
 "Charting: why no library" below.
@@ -433,9 +440,13 @@ it for eyeballing.
 | `6a5e4fe4…` | 38 | 89 | resistance pinned at 1 while power ramps — breaks the "power follows resistance" assumption |
 
 Between them these cover every `programType` in the account (0, 18, 20, 38, 46, 47)
-and both machine types. Add a fixture per machine type as they are captured —
-treadmill and rower records populate different fields (`totalSteps`, `incline`,
-`totalStrokes`, `peakSpm`) and will break assumptions built on bikes alone.
+and both bike types.
+
+Treadmill and rower fixtures are deliberately **not** being collected — see Scope
+above. If that changes, note that those records populate different fields
+(`totalSteps`, `incline`, `totalStrokes`, `peakSpm`) and will break assumptions
+built on bikes alone; the machine-type branches in `src/charts/plan.ts` are
+reasoned from the field list, never verified against a real record.
 
 Parser tests must cover: the double JSON parse, a missing or malformed `root`, an
 empty `workouts` array, unknown `machineType`, the snake_case API shape, a partial
