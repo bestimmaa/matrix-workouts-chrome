@@ -12,6 +12,7 @@ import {
   flagHeartRateDropouts,
   heartRateStats,
   loadCachedWorkouts,
+  controlSignature,
   programMode,
   toWorkout,
   type ReadableStorage,
@@ -183,9 +184,52 @@ describe("program mode", () => {
     expect(programMode(46)).toBe("target_heart_rate");
   });
 
-  it("does not guess at unmapped ids", () => {
-    for (const id of [0, 20, 38, 47]) expect(programMode(id)).toBe("unknown");
+  it("names the ramp test", () => {
+    expect(programMode(38)).toBe("ramp_test");
+  });
+
+  it("does not guess at the ids the telemetry cannot separate", () => {
+    for (const id of [0, 20, 47]) expect(programMode(id)).toBe("unknown");
     expect(programMode(null)).toBe("unknown");
+  });
+
+  it("classifies the ramp test as power-controlled from the data alone", () => {
+    const p38 = findWorkout(loadCachedWorkouts(storage(PERSIST_BLOB)), PROGRAM_38)!;
+    const sig = controlSignature(p38.samples);
+    expect(sig.mode).toBe("power_controlled");
+    expect(sig.levels).toBe(1);
+    expect(sig.changes).toBe(0);
+  });
+
+  it("classifies Sprint 8 as interval blocks from the data alone", () => {
+    const s8 = findWorkout(loadCachedWorkouts(storage(PERSIST_BLOB)), SPRINT_8)!;
+    const sig = controlSignature(s8.samples);
+    expect(sig.mode).toBe("interval_blocks");
+    expect(sig.meanStep).toBeGreaterThan(4);
+  });
+
+  it("declines to classify the modes that overlap", () => {
+    // Target-HR and the unidentified programs share a signature band; the
+    // classifier must say so rather than invent a distinction.
+    const all = loadCachedWorkouts(storage(PERSIST_BLOB));
+    for (const id of [TARGET_HR_CLEAN, TARGET_HR_DROPOUTS, PROGRAM_20, PROGRAM_0, PROGRAM_47]) {
+      expect(controlSignature(findWorkout(all, id)!.samples).mode).toBe("unclassified");
+    }
+  });
+
+  it("reports single-step nudging on target-heart-rate rides", () => {
+    const all = loadCachedWorkouts(storage(PERSIST_BLOB));
+    for (const id of [TARGET_HR_CLEAN, TARGET_HR_DROPOUTS]) {
+      const sig = controlSignature(findWorkout(all, id)!.samples);
+      expect(sig.meanStep).toBeGreaterThan(0.9);
+      expect(sig.meanStep).toBeLessThan(1.5);
+    }
+  });
+
+  it("handles an empty sample list without NaN", () => {
+    expect(controlSignature([])).toMatchObject({
+      mode: "unclassified", levels: 0, changes: 0, changeRate: 0, meanStep: 0,
+    });
   });
 
   it("parses every program in the account without special-casing", () => {

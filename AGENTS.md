@@ -143,15 +143,52 @@ Observed across one account's 43 workouts:
 
 | `programType` | n | Mode | Extra fields |
 |---|---|---|---|
-| 46 | 27 | Target heart rate | — |
-| 18 | 7 | **Sprint 8** (HIIT) | `sprintScores`, `totalSweatScore`, `sprint8ProgramLevel` |
+| 46 | 27 | Target heart rate — *confirmed by rider* | — |
+| 18 | 7 | **Sprint 8** (HIIT) — *confirmed structurally* | `sprintScores`, `totalSweatScore`, `sprint8ProgramLevel` |
 | 20 | 4 | *unidentified* | — |
 | 0 | 2 | *unidentified* | — |
 | 47 | 2 | *unidentified* | — |
-| 38 | 1 | *unidentified* | — |
+| 38 | 1 | Ramp test — *inferred, high confidence* | — |
 
-Only 46 and 18 are confirmed; the rest are deliberately left `"unknown"` in
-`program.ts` rather than guessed. Add a mapping only on real evidence.
+### Evidence behind the mapping, and the open question
+
+The rider's activities are: target heart rate (their staple), Sprint 8, free rides
+alongside Apple Fitness+, at least one ramp test, and at least one terrain video
+mapping elevation to resistance. Six program ids, and they cannot all be pinned.
+
+Measured across all 43 rides, the useful discriminator is the **mean magnitude of a
+resistance change** — how far the level moves each time it moves:
+
+| Program | rides | duration | change rate /100 | **mean step** | reading |
+|---|---|---|---|---|---|
+| 46 | 24 | 1–96 min | 4–67 | **1.01–1.44** | single-level nudging = a closed loop chasing a target |
+| 18 | 7 | 4–20 min | 27–33 | **3.0–9.4** | big swings between sprint and recovery |
+| 38 | 1 | 15 min | **0** | **0** | resistance pinned at 1, power a clean 35→280 W staircase |
+| 20 | 4 | 46–60 min | 6–13 | 1.43–3.10 | infrequent changes over long rides; one ride spans levels 1–30 |
+| 0 | 2 | 10, 31 min | 18–30 | 1.64–3.09 | — |
+| 47 | 2 | 3, 21 min | 5–34 | 2.54–3.00 | — |
+
+**38 is named.** One ride, and constant resistance with a stepped power ramp is a
+graded exercise test in constant-power mode — it matches "at least one ramp test"
+and nothing else looks like it.
+
+**0, 20 and 47 stay `"unknown"`.** Their change rates and step sizes overlap each
+other *and* overlap program 46, so the telemetry cannot separate free-riding from a
+terrain video from anything else. Do not name them on vibes. Two ways to close it:
+ride each program once and read the name off the console, or correlate ride dates
+against Apple Fitness+ history — program 20's four long rides (46–60 min, and one
+ranging to resistance 30) are the strongest terrain-video candidate, but that is a
+hypothesis, not a finding.
+
+### Prefer the derived control signature over the program id
+
+Because the ids are only partly decoded, `controlSignature(samples)` reads how the
+load was actually driven, straight from the series: `power_controlled` (resistance
+flat, power moving — the ramp test), `interval_blocks` (large frequent swings —
+Sprint 8), or `unclassified`. It names only what the data genuinely isolates and
+exposes the raw metrics for everything else. **Drive visualization choices off this
+rather than off `programType`,** so an unmapped or newly-introduced program still
+renders sensibly.
 
 **Sprint 8 is the one structural variant.** Every other program produces an
 identical record shape and identical interval keys, so the parser needs no

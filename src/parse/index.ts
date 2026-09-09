@@ -3,6 +3,7 @@ export * from "./program.js";
 export * from "./persist.js";
 export * from "./workout.js";
 export * from "./heartRate.js";
+export * from "./controlSignature.js";
 
 import { extractRawWorkouts, PERSIST_KEY } from "./persist.js";
 import { toWorkout } from "./workout.js";
