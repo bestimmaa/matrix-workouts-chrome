@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Full Matrix Workouts",
+  "version": "0.1.0",
+  "description": "Replaces the Matrix workout dashboard with the full recorded telemetry: power, resistance and cadence.",
+  "content_scripts": [
+    {
+      "matches": ["https://matrixworkouts.jfit.co/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -20,22 +20,41 @@ Run these before committing. **`npm test` must pass.**
 ```
 npm test            # vitest run
 npm run typecheck   # tsc --noEmit
+npm run build       # vite build -> dist/
 ```
 
-Both must pass before committing. The build, the extension shell and the charting
-layer are **not written yet** — the visualization framework is an open decision
-(see Status). `npm run dev` / `npm run build` will land with it, along with:
-load the extension via `chrome://extensions` → Developer mode → *Load unpacked*
-→ `dist/`; after a rebuild, reload the extension card **and** the target tab,
-since content-script changes are not hot-swapped.
+All three must pass before committing.
+
+Load the extension via `chrome://extensions` → Developer mode → *Load unpacked* →
+`dist/`. After a rebuild, reload the extension card **and** the target tab —
+content-script changes are not hot-swapped. `npm run dev` rebuilds on save; the
+reload is still manual.
+
+```
+npm run preview                 # every fixture -> preview/<id>.html
+npm run preview -- <workoutId>  # just one
+THEME=light npm run preview     # force the light theme
+```
+
+`npm run preview` renders a fixture to a standalone HTML file through jsdom — the
+same DOM the content script mounts, with the stylesheet inlined. Use it to iterate
+on the design without loading the extension or having a workout in the cache. The
+crosshair is inert there; it needs the live listeners.
 
 ## Status
 
-Built: the parse layer (`src/parse/`) and its fixtures — 43 tests green.
-Not built: the extension shell (manifest, content script) and all visualization.
-**The charting framework is deliberately undecided** — do not pick one without
-asking. Everything in "Visualization conventions" below is binding whenever that
-choice is made.
+Built, 95 tests green: the parse layer (`src/parse/`), the chart geometry layer
+(`src/charts/`), the view (`src/ui/`), and the MV3 content script (`src/content/`).
+The extension loads, takes over `/workouts/:id`, and renders every fixture in both
+themes.
+
+Not built: the HTTP API client, and therefore any history beyond the current week —
+a workout outside the cache currently renders an explanation, not a chart. Also
+absent: a treadmill or rower fixture, so the machine-type branches in
+`src/charts/plan.ts` are reasoned but unverified.
+
+**The charting framework question is settled: there isn't one.** See
+"Charting: why no library" below.
 
 ---
 
@@ -262,14 +281,66 @@ Decisions taken up front (revisit deliberately, don't drift):
 - **TypeScript + Vite**, MV3.
 - **Take over the stock detail view in place** rather than adding a side panel —
   the point is to replace the limited dashboard, not sit next to it.
-- **Hand-authored SVG charts, no runtime charting library.** Full control over the
-  design system, small bundle, no CSP friction. If interaction perf on long
-  sessions demands it, uPlot is the sanctioned escape hatch — nothing heavier.
+- **Hand-authored SVG charts, no runtime charting library.** See below.
+- **Zero runtime dependencies.** The whole bundle is 27 kB / 9.8 kB gzipped, ships
+  as one IIFE, and makes no network request of any kind.
 - **`parse/` and `charts/` stay pure and DOM-free** so they are unit-testable
-  against fixtures without a browser.
+  against fixtures without a browser. Concretely: `charts/` emits *geometry* —
+  path `d` strings, tick positions, scales — and `ui/` turns that into elements.
+  Nothing under `charts/` may touch `document`.
 - The site is a React SPA: routes change **without a page load**. The content
-  script must observe navigation (history patching or a MutationObserver), not
-  just run once at `document_idle`.
+  script must observe navigation, not just run once at `document_idle` — and see
+  the isolated-world trap below, because the obvious way to do that does not work.
+- **Overlay in a shadow root; never edit the site's DOM.** `src/content/mount.ts`
+  mounts a fixed, full-viewport host with `attachShadow({ mode: "open" })` and
+  renders inside it. The site's React tree is left completely untouched, so the
+  host page's CSS cannot reach our UI, ours cannot leak into theirs, and removing
+  one element restores the stock page exactly. Every view carries a **Show stock
+  page** button, and a parse failure renders a readable explanation — never a blank
+  sheet over the user's real dashboard.
+- **No webfonts.** The prototype pulls Barlow and IBM Plex Mono from Google Fonts;
+  the extension makes no external request, so `src/ui/styles.css` is system stacks
+  only. Do not reintroduce a remote font.
+
+---
+
+## Charting: why no library
+
+Decided after measuring, not by taste. **Do not add a charting library without a
+reason that survives all four of these.**
+
+- **Size is not the problem.** The largest fixture is 376 samples; a 96-minute ride
+  is ~576. Four panels is four `<path>` elements. Nothing here needs canvas, WebGL,
+  decimation or virtualization.
+- **Theming.** Colours are CSS custom properties resolved by the browser in both
+  themes. Every canvas library (Chart.js, uPlot, ECharts) resolves colour in JS and
+  needs a full redraw on a theme flip.
+- **The conventions below are the opposite of most libraries' defaults** — libraries
+  make dual-axis easy and cross-chart cursor sync hard, default to smoothed curves,
+  and impose their own axis "nicing".
+- **Accessibility and testability.** SVG is real DOM: focusable, labelable,
+  inspectable, and assertable in jsdom. Canvas is a black box.
+- **MV3.** Vega/Vega-Lite's expression parser wants `Function()`. React-based chart
+  kits (Recharts, Victory, Nivo) would ship a second React into a page that already
+  has one.
+
+`src/charts/scale.ts` and `src/charts/series.ts` are the ~150 lines this replaces:
+a linear scale, a 1/2/5 tick algorithm, and line/step/area path builders.
+`d3-scale` + `d3-shape` (pure, tree-shakeable, ~16 kB) are the sanctioned swap if
+that maths ever gets fiddly — but *only* those two. `d3-selection`, `d3-axis` and
+`d3-brush` are DOM-coupled and would break the purity rule above. **uPlot remains
+the escape hatch**, and the trigger for it is not a long ride: it is a full-history
+view (43 workouts x ~400 samples) with live zoom.
+
+## The isolated-world trap — read before touching route detection
+
+**Patching `history.pushState` from a content script does not work.** Content
+scripts run in an isolated world with their own wrappers, so a patch applied there
+never sees the page's own calls. This contradicts the usual advice and cost real
+time to discover; `src/content/route.ts` therefore polls `location.href` (300 ms)
+and listens for `popstate`/`hashchange`, using the Navigation API opportunistically
+where it exists. The poll is the backstop, not the optimisation — a missed
+navigation leaves a stale workout on screen over a different one.
 
 ---
 
@@ -286,15 +357,29 @@ suggestions:
   the data (1–30 observed), never a hard-coded 9.
 - **Sprint 8 deserves its own view.** Eight discrete efforts with per-sprint scores
   is a different story from a steady-state ride; a bar per sprint beside the power
-  trace says more than the trace alone.
+  trace says more than the trace alone. **Those bars need a non-zero baseline** —
+  scores cluster tightly (1060–1180 on the reference ride), so from zero all eight
+  are the same height and the only thing worth seeing, whether the rider faded, is
+  invisible. The floor is stated on the panel, as the rule below requires.
 - **Lead with the variable the console was holding.** A target-watts ride should put
   power front and centre with the target blocks marked; a target-HR ride should lead
   with heart rate against its target; a fitness test should show the stage staircase.
-  Same telemetry, different headline.
+  Same telemetry, different headline. Implemented in `src/charts/plan.ts`, which
+  orders panels off `controlSignature` first and `programType` second, and prints
+  the reason it chose in the page's lede so the ordering is never magic.
 - **Categorical palette, in fixed slot order** — power `#2a78d6`, resistance
-  `#eb6834`, cadence `#1baf7a` (light) / `#3987e5`, `#d95926`, `#199e70` (dark).
-  Validated colorblind-safe as a set; if you add a series, re-validate rather
-  than picking a hue by eye.
+  `#eb6834`, cadence `#1baf7a`, heart rate `#cc79a7` (light) / `#3987e5`,
+  `#d95926`, `#199e70`, `#d68cb5` (dark). Validated colorblind-safe as a set; if
+  you add a series, re-validate rather than picking a hue by eye. Slot 4 is
+  Okabe-Ito reddish purple — the first three already sit in that family, so the
+  fourth was taken from it rather than eyeballed.
+- **Slots belong to channels, not positions**, so power is blue in every workout
+  regardless of which panel leads. Speed and incline reuse slots 1 and 2 because
+  they are stand-ins that only appear when the machine reports no power / no
+  resistance; a test asserts no workout ever renders two panels in one slot.
+- **Do not plot speed beside power on a bike.** The console derives it from power
+  and cadence, so it is a third view of the same thing — and it would have to
+  borrow power's slot to say it. `src/charts/plan.ts` drops it.
 - **Design both themes** via CSS custom properties: bare `:root` for light,
   `@media (prefers-color-scheme: dark)` guarded with `:root:not([data-theme="light"])`,
   and `:root[data-theme="dark"]`. Never define a color only inside a media block.
@@ -304,11 +389,11 @@ suggestions:
   rather than 0; say so on the panel.
 - Charts are keyboard-operable and carry an accessible label.
 
-`reference/prototype-telemetry.html` is a standalone, self-contained page that
-implements every rule above against the reference fixture — small multiples,
-shared crosshair, step line, both themes, table view. It is the prototype that
-motivated this project. Read it before writing chart code; port from it rather
-than reinventing.
+`reference/prototype-telemetry.html` is the standalone page that motivated this
+project. It has now been **ported** into `src/charts/` + `src/ui/` — layout
+constants, palette, caption structure, crosshair behaviour and table view all come
+from it. Keep it as the design reference; it is frozen, so when the two disagree,
+the code is what ships.
 
 ---
 
@@ -343,7 +428,7 @@ it for eyeballing.
 | `6a95b033…` | **18 Sprint 8** | 121 | the only structural variant; sprint scores, 400 W spikes, resistance 23 |
 | `6a941332…` | 0 | 61 | unidentified program |
 | `6a8336b6…` | 47 | 19 | shortest ride — guards off-by-one on tiny series |
-| `6a7cab8c…` | 20 | 277 | unidentified program |
+| `6a7cab8c…` | 20 target watts | 277 | the confirmed watt-target ride |
 | `6a6368cb…` | 46 | 376 | **recumbent** — the only non-upright ride; strap dead for 215 samples; final sample `duration: 8` |
 | `6a5e4fe4…` | 38 | 89 | resistance pinned at 1 while power ramps — breaks the "power follows resistance" assumption |
 
@@ -355,6 +440,17 @@ treadmill and rower records populate different fields (`totalSteps`, `incline`,
 Parser tests must cover: the double JSON parse, a missing or malformed `root`, an
 empty `workouts` array, unknown `machineType`, the snake_case API shape, a partial
 sprint-score set, and a final sample whose duration is not 10.
+
+Chart tests (`src/charts/charts.test.ts`) run the geometry against every fixture and
+assert the conventions directly: no `NaN` in any emitted path, one palette slot per
+panel, a step path for resistance and a line path for power, every non-zero baseline
+labelled, and dropouts nulled rather than zeroed. **Add the assertion when you add
+the rule** — a convention nothing checks is a convention that drifts.
+
+View tests (`src/ui/dashboard.test.ts`) run under `// @vitest-environment jsdom` and
+cover the DOM: accessible labels, arrow-key scrubbing, the dropout readout, the
+sprint bars, the table row count. Note that jsdom rebases `import.meta.url` onto the
+document URL, so fixtures there must be resolved from `process.cwd()`.
 
 ---
 
