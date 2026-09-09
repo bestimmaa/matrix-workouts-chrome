@@ -143,42 +143,62 @@ Observed across one account's 43 workouts:
 
 | `programType` | n | Mode | Extra fields |
 |---|---|---|---|
-| 46 | 27 | Target heart rate — *confirmed by rider* | — |
-| 18 | 7 | **Sprint 8** (HIIT) — *confirmed structurally* | `sprintScores`, `totalSweatScore`, `sprint8ProgramLevel` |
-| 20 | 4 | *unidentified* | — |
+| 46 | 27 | Target heart rate — *confirmed* | — |
+| 18 | 7 | **Sprint 8** (HIIT) — *confirmed* | `sprintScores`, `totalSweatScore`, `sprint8ProgramLevel` |
+| 20 | 4 | **Target watts** (constant power) — *confirmed* | — |
+| 38 | 1 | **Fitness test** (console VO₂ / Cooper) — *confirmed* | — |
 | 0 | 2 | *unidentified* | — |
 | 47 | 2 | *unidentified* | — |
-| 38 | 1 | Ramp test — *inferred, high confidence* | — |
 
-### Evidence behind the mapping, and the open question
+### How the mapping was established
 
-The rider's activities are: target heart rate (their staple), Sprint 8, free rides
-alongside Apple Fitness+, at least one ramp test, and at least one terrain video
-mapping elevation to resistance. Six program ids, and they cannot all be pinned.
+**The rider keeps a dated Notion training log**, one row per session with duration,
+distance, average watts and free-text notes:
+[Indoor cycling workouts](https://app.notion.com/p/5156e504e6484a8bab3580112d8b3cee).
+Matching a ride's date and duration against that log identifies its mode directly.
+**This is the authoritative route — use it before inferring anything from telemetry.**
 
-Measured across all 43 rides, the useful discriminator is the **mean magnitude of a
-resistance change** — how far the level moves each time it moves:
+- **20 = target watts.** All four rides are explicitly watt-target sessions in the
+  log: "2×18 min at 145–150 W" (and "turning the watt target down" between blocks),
+  "4×4 @ 200 W", "2×18 min @ 155 W", "2×20 min @ 155 W". The 2026-08-12 ride matches
+  its row exactly — 46.07 min, 22.29 km, 129 W average against a fixture mean of 129.2.
+- **38 = fitness test.** The one program-38 ride matches the log's "Fitness test /
+  indoor bike" row exactly: 2026-07-20, 902 s, 7419 m, 147.6 W against a logged 149 W.
+  The console reported a VO₂ estimate and "final stage completed: 7" — which is why
+  the series shows eight power stages at a fixed resistance.
+- **46 = target heart rate**, corroborated by entries naming the mode outright
+  ("Relaxed Zone 2 ride in Target HR mode", "Target HR was 139").
+
+**0 and 47 are still open.** Their rides appear in the log but no entry names a
+console mode. Program 0 is plausibly manual / quick-start — that is the usual console
+convention for id 0, and both rides are short unstructured efforts — but convention
+is not evidence, so it stays `"unknown"`.
+
+### A rejected heuristic — do not re-derive it
+
+Detecting watt-target rides from the data alone looks feasible on a small sample and
+**fails on the full set**. Measuring the fraction of a ride spent on a power plateau:
+program 20 scores 0.50–0.76, but three of the 24 program-46 rides score 0.51–0.72.
+Any threshold misclassifies them. Use `programType` for this distinction.
+
+Measured across all 43 rides, the **mean magnitude of a resistance change** does
+separate the control loops — how far the level moves each time it moves:
 
 | Program | rides | duration | change rate /100 | **mean step** | reading |
 |---|---|---|---|---|---|
 | 46 | 24 | 1–96 min | 4–67 | **1.01–1.44** | single-level nudging = a closed loop chasing a target |
 | 18 | 7 | 4–20 min | 27–33 | **3.0–9.4** | big swings between sprint and recovery |
 | 38 | 1 | 15 min | **0** | **0** | resistance pinned at 1, power a clean 35→280 W staircase |
-| 20 | 4 | 46–60 min | 6–13 | 1.43–3.10 | infrequent changes over long rides; one ride spans levels 1–30 |
+| 20 | 4 | 46–60 min | 6–13 | 1.43–3.10 | infrequent changes; the console holds a wattage, so resistance only moves as cadence drifts |
 | 0 | 2 | 10, 31 min | 18–30 | 1.64–3.09 | — |
 | 47 | 2 | 3, 21 min | 5–34 | 2.54–3.00 | — |
 
-**38 is named.** One ride, and constant resistance with a stepped power ramp is a
-graded exercise test in constant-power mode — it matches "at least one ramp test"
-and nothing else looks like it.
+Note what this does and does not buy you: it cleanly isolates 46 (single-level
+nudging), 18 (big swings) and 38 (no movement at all), but 0, 20 and 47 overlap each
+other and overlap 46. The log, not the telemetry, is what pinned 20.
 
-**0, 20 and 47 stay `"unknown"`.** Their change rates and step sizes overlap each
-other *and* overlap program 46, so the telemetry cannot separate free-riding from a
-terrain video from anything else. Do not name them on vibes. Two ways to close it:
-ride each program once and read the name off the console, or correlate ride dates
-against Apple Fitness+ history — program 20's four long rides (46–60 min, and one
-ranging to resistance 30) are the strongest terrain-video candidate, but that is a
-hypothesis, not a finding.
+To close 0 and 47: ride each once and read the mode off the console, then add a row
+to the training log so the next session can match it.
 
 ### Prefer the derived control signature over the program id
 
@@ -267,6 +287,10 @@ suggestions:
 - **Sprint 8 deserves its own view.** Eight discrete efforts with per-sprint scores
   is a different story from a steady-state ride; a bar per sprint beside the power
   trace says more than the trace alone.
+- **Lead with the variable the console was holding.** A target-watts ride should put
+  power front and centre with the target blocks marked; a target-HR ride should lead
+  with heart rate against its target; a fitness test should show the stage staircase.
+  Same telemetry, different headline.
 - **Categorical palette, in fixed slot order** — power `#2a78d6`, resistance
   `#eb6834`, cadence `#1baf7a` (light) / `#3987e5`, `#d95926`, `#199e70` (dark).
   Validated colorblind-safe as a set; if you add a series, re-validate rather

@@ -184,16 +184,25 @@ describe("program mode", () => {
     expect(programMode(46)).toBe("target_heart_rate");
   });
 
-  it("names the ramp test", () => {
-    expect(programMode(38)).toBe("ramp_test");
+it("names the modes confirmed against the rider's training log", () => {
+    expect(programMode(20)).toBe("target_watts");
+    expect(programMode(38)).toBe("fitness_test");
   });
 
-  it("does not guess at the ids the telemetry cannot separate", () => {
-    for (const id of [0, 20, 47]) expect(programMode(id)).toBe("unknown");
+  it("does not guess at the ids nothing confirms", () => {
+    for (const id of [0, 47]) expect(programMode(id)).toBe("unknown");
     expect(programMode(null)).toBe("unknown");
   });
 
-  it("classifies the ramp test as power-controlled from the data alone", () => {
+  it("tags the watt-target and fitness-test fixtures", () => {
+    const all = loadCachedWorkouts(storage(PERSIST_BLOB));
+    expect(findWorkout(all, PROGRAM_20)!.mode).toBe("target_watts");
+    expect(findWorkout(all, PROGRAM_38)!.mode).toBe("fitness_test");
+    expect(findWorkout(all, PROGRAM_0)!.mode).toBe("unknown");
+    expect(findWorkout(all, PROGRAM_47)!.mode).toBe("unknown");
+  });
+
+  it("classifies the fitness test as power-controlled from the data alone", () => {
     const p38 = findWorkout(loadCachedWorkouts(storage(PERSIST_BLOB)), PROGRAM_38)!;
     const sig = controlSignature(p38.samples);
     expect(sig.mode).toBe("power_controlled");

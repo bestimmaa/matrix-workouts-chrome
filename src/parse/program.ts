@@ -6,28 +6,48 @@
  * 47 (2x), 38 (1x). Only the two confirmed ones are named here — the rest are
  * deliberately left unmapped rather than guessed at.
  */
-export type ProgramMode = "sprint_8" | "target_heart_rate" | "ramp_test" | "unknown";
+export type ProgramMode =
+  | "sprint_8"
+  | "target_heart_rate"
+  | "target_watts"
+  | "fitness_test"
+  | "unknown";
 
 export const PROGRAM_MODES: Readonly<Record<number, ProgramMode>> = Object.freeze({
-  18: "sprint_8",        // confirmed: carries sprintScores
-  46: "target_heart_rate", // confirmed by the rider
-  38: "ramp_test",       // see evidence note below
+  18: "sprint_8",          // carries sprintScores; confirmed by rider
+  46: "target_heart_rate", // confirmed by rider and by their training log
+  20: "target_watts",      // all 4 rides are watt-target sessions in the log
+  38: "fitness_test",      // console VO2 / Cooper test; exact match in the log
 });
 
 /**
- * Why 38 is named and 0/20/47 are not.
+ * How these were established, and why 0 and 47 are still unknown.
  *
- * Program 38 occurs exactly once in the account and its shape is unambiguous:
- * resistance pinned at level 1 for the entire ride while power climbs a clean
- * staircase, 35 W to 280 W in eight ~2-minute stages at a held cadence. That is a
- * graded exercise test driven in constant-power (ERG) mode, and the rider confirms
- * doing "at least one ramp test". One ride, one signature, one recollection.
+ * The rider keeps a Notion training log with a dated row per session. Matching ride
+ * dates and durations against it identifies the modes directly, rather than by
+ * inference from the telemetry:
  *
- * Programs 0, 20 and 47 stay "unknown". The rider's remaining activities are free
- * rides alongside Apple Fitness+ and a terrain video mapping elevation to
- * resistance, but the telemetry does not separate those three ids: their change
- * rates and step sizes overlap each other AND overlap program 46. Naming them would
- * be a guess dressed as a fact. See AGENTS.md for the evidence table.
+ *  - **20 = target watts.** All four program-20 rides are explicitly watt-target
+ *    sessions in the log ("2x18 min at 145-150 W", "4x4 @ 200 W", "2x18 min @
+ *    155 W", "2x20 min @ 155 W"). The 2026-08-12 ride matches its log row exactly:
+ *    46.07 min, 22.29 km, 129 W average.
+ *  - **38 = fitness test.** The single program-38 ride matches the log's
+ *    "Fitness test / indoor bike" row exactly: 2026-07-20, 902 s, 7419 m, 148 W
+ *    average against a logged 149 W. The console reported a VO2 estimate and
+ *    "final stage completed: 7", which is why the series shows eight power stages
+ *    at a fixed resistance.
+ *  - **46 = target heart rate**, independently corroborated by log entries that
+ *    name the mode ("Relaxed Zone 2 ride in Target HR mode", "Target HR was 139").
+ *
+ * Programs 0 and 47 remain "unknown": their rides are in the log but no entry names
+ * a console mode, and the telemetry does not separate them. Program 0 is plausibly
+ * manual / quick-start (that is the usual console convention for id 0, and both
+ * rides are short unstructured efforts) but that is a convention, not evidence.
+ *
+ * A power-plateau heuristic was tried as a way to detect watt-target rides from the
+ * data alone and REJECTED: across all 43 rides, program 20 scores 0.50-0.76 but
+ * three program-46 rides score 0.51-0.72, so any threshold misclassifies them.
+ * Use programType for this, not a derived signal.
  */
 
 export function programMode(programType: number | null | undefined): ProgramMode {
