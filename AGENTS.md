@@ -18,16 +18,24 @@ three are the reason this project exists.
 Run these before committing. **`npm test` must pass.**
 
 ```
-npm run dev         # Vite watch build into dist/, load unpacked from there
-npm run build       # production build into dist/
-npm run typecheck   # tsc --noEmit
-npm run lint        # eslint
 npm test            # vitest run
+npm run typecheck   # tsc --noEmit
 ```
 
-Load the extension: `chrome://extensions` → Developer mode → *Load unpacked* →
-select `dist/`. After a `npm run dev` rebuild, hit reload on the extension card
-and then reload the target tab — content-script changes are not hot-swapped.
+Both must pass before committing. The build, the extension shell and the charting
+layer are **not written yet** — the visualization framework is an open decision
+(see Status). `npm run dev` / `npm run build` will land with it, along with:
+load the extension via `chrome://extensions` → Developer mode → *Load unpacked*
+→ `dist/`; after a rebuild, reload the extension card **and** the target tab,
+since content-script changes are not hot-swapped.
+
+## Status
+
+Built: the parse layer (`src/parse/`) and its fixtures — 43 tests green.
+Not built: the extension shell (manifest, content script) and all visualization.
+**The charting framework is deliberately undecided** — do not pick one without
+asking. Everything in "Visualization conventions" below is binding whenever that
+choice is made.
 
 ---
 
@@ -52,24 +60,37 @@ strings. Keys present: `authStore`, `configStore`, `navigationStore`, `userStore
 permission beyond the content script. Treat the API as the fallback for history
 deeper than what the app has cached (see below).
 
-### The HTTP API (fallback only)
+### The HTTP API — the only route to full history
 
-Hosts `https://orion.jfit.co` and `https://apollo.jfit.co`. Routes observed in the
-app bundle:
+**Base host is `https://apollo.jfit.co`.** (`orion.jfit.co` also appears in the
+bundle but answers 403 — do not use it.) Bearer token sits at
+`userStore.exerciserProfile.token`.
 
 ```
+GET  /exerciser/{id}/workouts        <- FULL history, intervals included
 POST /exerciser/login
-GET  /exerciser/{id}/workouts        <- deeper history than the cache holds
-GET  /workouts/{id}
 POST /exerciser/exchange_token_for_exerciser
 POST /exerciser/register
 POST /exerciser/validate
 GET  /exerciser/{id}
 ```
 
-Bearer token sits at `userStore.exerciserProfile.token`. `userStore.workoutTimeFrame`
-is the app's own history filter and is often empty, which is why the local cache may
-hold only the last day or two.
+`GET /workouts/{id}` is in the bundle but answers 404; fetch the list and filter.
+The list response is `{ workouts, messages, paging }` and returns complete records
+including every interval — one request gets everything.
+
+**The cache holds only the current week.** Measured on one account: `localStorage`
+had 2 workouts while the API had 43. Worse, the SPA does not fetch on demand — a
+direct link to a workout outside the cached week renders "Oops! An error has
+occurred." So any feature that reaches beyond the current week must go to the API.
+
+### Two shapes for the same data
+
+**The API returns `snake_case`; the persisted blob returns `camelCase`** — including
+inside `intervals` (`average_distance` vs `averageDistance`). `camelizeWorkout()`
+normalizes both into one code path; always go through it rather than reading raw
+keys. The API also carries four fields the cache does not: `program_id`,
+`program_level`, `workout_originator` and `integration_metadata`.
 
 ---
 
@@ -91,34 +112,78 @@ hold only the last day or two.
 | `workoutSource` | `connected` = machine-recorded |
 | `intervals` | the sample array — see below |
 | `wattsKg`, `functionThresholdPower`, `peakRpm`, `averageRpm`, `peakSpm`, `totalStrokes` | often `0`; several are machine-type specific |
+| `totalSweatScore`, `sprintScores`, `sprint8ProgramLevel` | **Sprint 8 rides only** — see Program modes |
 
 ### Interval sample (one per 10 s)
 
 | Field | Unit | Notes |
 |---|---|---|
 | `power` | watts | **not in the stock UI** |
-| `resistance` | console level (1–9 on the bike) | **not in the stock UI** — discrete, changes in steps |
+| `resistance` | console level (1–30 observed) | **not in the stock UI** — discrete, changes in steps |
 | `rpm` | cadence | **not in the stock UI** |
 | `speed` | km/h | |
 | `heartRate` | bpm | see dropouts below |
 | `incline` | % | treadmill-relevant; `0` on a bike |
 | `averageDistance` | meters | **cumulative** distance, despite the name |
 | `distance` | meters | per-sample delta |
-| `duration` | seconds | `10` for every sample except the last, which is `0` |
+| `duration` | seconds | `10` for every sample except the last, which is a partial (0–11) |
 | `totalSteps` | count | treadmill-relevant |
 
 Sample count × 10 s ≈ `duration`. Field presence is machine-type dependent — never
 assume a field is meaningful just because it is present and zero.
 
+### Program modes (`programType`)
+
+`programType` is the numeric console program — the workout *mode*. It is the only
+mode marker, and **the web app itself never reads it**: `programType` appears exactly
+once in the whole app bundle, in the schema. The app detects a Sprint 8 ride
+structurally, by the presence of `sprintScores`. Do the same.
+
+Observed across one account's 43 workouts:
+
+| `programType` | n | Mode | Extra fields |
+|---|---|---|---|
+| 46 | 27 | Target heart rate | — |
+| 18 | 7 | **Sprint 8** (HIIT) | `sprintScores`, `totalSweatScore`, `sprint8ProgramLevel` |
+| 20 | 4 | *unidentified* | — |
+| 0 | 2 | *unidentified* | — |
+| 47 | 2 | *unidentified* | — |
+| 38 | 1 | *unidentified* | — |
+
+Only 46 and 18 are confirmed; the rest are deliberately left `"unknown"` in
+`program.ts` rather than guessed. Add a mapping only on real evidence.
+
+**Sprint 8 is the one structural variant.** Every other program produces an
+identical record shape and identical interval keys, so the parser needs no
+per-program branching beyond the sprint block. `totalSweatScore` is exactly the sum
+of the eight `sprintScores` — a useful invariant, and it is asserted in the tests.
+
+**Do not generalize a program's *behaviour* across modes.** On program 46 power
+tracks resistance almost perfectly (r ≈ 0.98). On program 38 resistance is pinned at
+level 1 for the whole ride while power steps 35 → 280 W, so any analysis that treats
+resistance as the driver of output is wrong there. Read the series, not the habit.
+
 ### Data-quality gotchas
 
-- **Heart-rate dropouts.** Chest-strap glitches show up as implausibly low values,
-  including literal `0`, `14`, `15`, `30`. In the reference fixture 40 of 314
-  samples read below 80 bpm. **Filter before charting or averaging**, and label
-  the filter. Note the platform's own `averageHeartRate` (142) does not match a
-  naive filtered mean (~134) — do not assume you can reproduce their summary.
+- **Heart-rate dropouts, and they can be most of the ride.** Chest-strap glitches
+  show up as implausibly low values including literal `0`, `14`, `15`, `30`. Range
+  across the fixtures: 0 dropouts (08 Sep) → 40 of 314 (09 Sep) → **215 of 376** on
+  the recumbent ride, where the strap died halfway and never recovered. **Filter
+  before charting or averaging**, label the filter, and never assume a majority of
+  samples are good.
+- **Reported summaries are not derived from the intervals.** `averageHeartRate`,
+  `minHeartRate` and `maxHeartRate` disagree with the series (e.g. reported min 87
+  vs series min 0/86; reported max 169 vs series max 168). Compute your own from the
+  samples if you need internal consistency, and say which you are showing.
 - `averageDistance` is cumulative, `distance` is the delta. The names lie.
-- The last interval has `duration: 0`.
+- **The final interval's `duration` is NOT always 0.** Observed: 0, 1, 2, 3, 5, 6, 7,
+  8, 10 and 11. **Never compute elapsed time as `index * 10`** — accumulate each
+  sample's own `duration`, which is what `toWorkout` does.
+- **Resistance range is machine- and program-dependent: 1–30 observed.** Do not
+  hard-code an axis maximum; take it from the data.
+- Per-sample `distance` is quantized to multiples of **16.09 m = 0.01 mile** — the
+  console records imperial and the API converts. This is why summed samples drift
+  from the reported total.
 - Cumulative distance may end slightly below the record's `distance` total.
 
 ---
@@ -160,7 +225,11 @@ suggestions:
   (83–127 rpm) share no scale; overlaying them on two y-axes invents correlations.
   Use **small multiples on a shared x-axis** with a shared crosshair.
 - **Resistance is a step line, never smoothed.** It is a discrete console setting
-  that jumps; interpolating between levels misstates the data.
+  that jumps; interpolating between levels misstates the data. Scale its axis from
+  the data (1–30 observed), never a hard-coded 9.
+- **Sprint 8 deserves its own view.** Eight discrete efforts with per-sprint scores
+  is a different story from a steady-state ride; a bar per sprint beside the power
+  trace says more than the trace alone.
 - **Categorical palette, in fixed slot order** — power `#2a78d6`, resistance
   `#eb6834`, cadence `#1baf7a` (light) / `#3987e5`, `#d95926`, `#199e70` (dark).
   Validated colorblind-safe as a set; if you add a series, re-validate rather
@@ -198,15 +267,33 @@ This handles personal health data.
 
 ## Testing
 
-- **Vitest**, unit tests against `fixtures/`.
-- `fixtures/upright_bike-2026-09-09.json` is a **real captured record**: 314
-  intervals, a 52:16 upright-bike session, with the HR dropouts intact. It is the
-  primary parser and chart fixture — do not "clean" it, the mess is the point.
-  The `.csv` alongside it is the same session flattened, for eyeballing.
-- Add a fixture per machine type as they are captured. Treadmill and rower records
-  populate different fields and will break assumptions built on the bike alone.
-- Parser tests must cover: the double JSON parse, a missing or malformed `root`, an
-  empty `workouts` array, and unknown `machineType`.
+**Vitest**, unit tests against `fixtures/`. All fixtures are **real captured
+records** — do not "clean" them, the mess is the point.
+
+`fixtures/persist-root.json` is a synthetic `localStorage` blob wrapping all eight
+real records in the true double-encoded shape; it is what the parser tests load.
+Each `raw-<workoutId>.json` is one record, with a `.csv` of the same series beside
+it for eyeballing.
+
+| Fixture | Program | Samples | Why it is here |
+|---|---|---|---|
+| `6aa194a0…` | 46 target HR | 314 | 40 HR dropouts including zeros |
+| `6aa04566…` | 46 target HR | 272 | the control: strap clean throughout |
+| `6a95b033…` | **18 Sprint 8** | 121 | the only structural variant; sprint scores, 400 W spikes, resistance 23 |
+| `6a941332…` | 0 | 61 | unidentified program |
+| `6a8336b6…` | 47 | 19 | shortest ride — guards off-by-one on tiny series |
+| `6a7cab8c…` | 20 | 277 | unidentified program |
+| `6a6368cb…` | 46 | 376 | **recumbent** — the only non-upright ride; strap dead for 215 samples; final sample `duration: 8` |
+| `6a5e4fe4…` | 38 | 89 | resistance pinned at 1 while power ramps — breaks the "power follows resistance" assumption |
+
+Between them these cover every `programType` in the account (0, 18, 20, 38, 46, 47)
+and both machine types. Add a fixture per machine type as they are captured —
+treadmill and rower records populate different fields (`totalSteps`, `incline`,
+`totalStrokes`, `peakSpm`) and will break assumptions built on bikes alone.
+
+Parser tests must cover: the double JSON parse, a missing or malformed `root`, an
+empty `workouts` array, unknown `machineType`, the snake_case API shape, a partial
+sprint-score set, and a final sample whose duration is not 10.
 
 ---
 
