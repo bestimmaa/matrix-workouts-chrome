@@ -1,0 +1,662 @@
+<title>Program 46 Telemetry</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Barlow:wght@400;500&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --plane:#f7f7f4; --surface:#fcfcfb;
+    --ink:#0b0b0b; --ink-2:#52514e; --ink-3:#898781;
+    --grid:#e4e3dc; --rule:#dcdbd3;
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
+    --ring:rgba(11,11,11,.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --plane:#0d0d0d; --surface:#1a1a19;
+      --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#898781;
+      --grid:#2c2c2a; --rule:#333331;
+      --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+      --ring:rgba(255,255,255,.12);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --plane:#0d0d0d; --surface:#1a1a19;
+    --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#898781;
+    --grid:#2c2c2a; --rule:#333331;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+    --ring:rgba(255,255,255,.12);
+  }
+
+  body { background:var(--plane); color:var(--ink);
+    font-family:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif; }
+  .wrap { max-width:1080px; margin:0 auto; padding:40px 24px 64px;
+    display:flex; flex-direction:column; gap:28px; }
+
+  /* ---- header ---- */
+  .eyebrow { font-family:"Barlow Condensed",system-ui,sans-serif; font-weight:600;
+    letter-spacing:.14em; text-transform:uppercase; font-size:12px; color:var(--ink-3); }
+  h1 { font-family:"Barlow Condensed",system-ui,sans-serif; font-weight:600;
+    font-size:clamp(34px,5vw,52px); line-height:1.02; margin:6px 0 0;
+    letter-spacing:-.005em; text-wrap:balance; }
+  .lede { color:var(--ink-2); max-width:62ch; margin:14px 0 0; font-size:16.5px; line-height:1.55; }
+  .meta { display:flex; flex-wrap:wrap; gap:0 28px; margin-top:18px;
+    font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px; color:var(--ink-3); }
+  .meta b { color:var(--ink-2); font-weight:500; }
+
+  /* ---- console readout ---- */
+  .console { background:var(--surface); border:1px solid var(--ring); border-radius:10px;
+    padding:16px 20px; display:grid; gap:18px;
+    grid-template-columns:auto repeat(3,minmax(0,1fr)); align-items:center; }
+  .clock { display:flex; flex-direction:column; gap:3px; padding-right:20px;
+    border-right:1px solid var(--rule); }
+  .clock .k { font-family:"Barlow Condensed",system-ui,sans-serif; font-weight:600;
+    letter-spacing:.12em; text-transform:uppercase; font-size:10.5px; color:var(--ink-3); }
+  .clock .v { font-family:"IBM Plex Mono",ui-monospace,monospace; font-weight:500;
+    font-size:22px; color:var(--ink); font-variant-numeric:tabular-nums; }
+  .read { display:flex; flex-direction:column; gap:3px; }
+  .read .k { display:flex; align-items:center; gap:7px;
+    font-family:"Barlow Condensed",system-ui,sans-serif; font-weight:600;
+    letter-spacing:.12em; text-transform:uppercase; font-size:10.5px; color:var(--ink-3); }
+  .read .v { font-family:"IBM Plex Mono",ui-monospace,monospace; font-weight:600;
+    font-size:26px; color:var(--ink); line-height:1; }
+  .read .v small { font-size:12px; font-weight:400; color:var(--ink-3); margin-left:4px; }
+  .dot { width:9px; height:9px; border-radius:50%; flex:none; }
+
+  /* ---- panels ---- */
+  .stack { display:flex; flex-direction:column; gap:4px;
+    background:var(--surface); border:1px solid var(--ring); border-radius:10px;
+    padding:18px 20px 8px; }
+  .stack:focus-visible { outline:2px solid var(--s1); outline-offset:3px; }
+  .panel { margin:0; }
+  figcaption { display:flex; align-items:baseline; gap:9px; padding-bottom:2px; }
+  .swatch { width:9px; height:9px; border-radius:50%; background:var(--accent);
+    align-self:center; flex:none; }
+  figcaption h2 { font-family:"Barlow Condensed",system-ui,sans-serif; font-weight:600;
+    font-size:16px; letter-spacing:.03em; text-transform:uppercase; margin:0; color:var(--ink); }
+  .unit { font-size:12.5px; color:var(--ink-3); }
+  .range { margin-left:auto; font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:11.5px; color:var(--ink-3); font-variant-numeric:tabular-nums; }
+  .panel svg { display:block; width:100%; height:auto; overflow:visible; }
+  .grid { stroke:var(--grid); stroke-width:1; }
+  .series { fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round;
+    vector-effect:non-scaling-stroke; }
+  .area { opacity:.10; stroke:none; }
+  .ytick { fill:var(--ink-3); font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:10.5px; text-anchor:end; }
+  .xtick { fill:var(--ink-3); font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:10.5px; text-anchor:middle; }
+  .xlabel { fill:var(--ink-3); font-family:"Barlow Condensed",system-ui,sans-serif;
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase; text-anchor:middle; }
+  .cross { stroke:var(--ink-3); stroke-width:1; opacity:0;
+    vector-effect:non-scaling-stroke; pointer-events:none; }
+  .cursor { opacity:0; stroke:var(--surface); stroke-width:2; pointer-events:none; }
+  .live .cross, .live .cursor { opacity:1; }
+
+  /* ---- finding ---- */
+  .finding { display:grid; gap:20px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
+  .finding p { margin:0; color:var(--ink-2); line-height:1.6; font-size:15.5px; }
+  .finding h3 { font-family:"Barlow Condensed",system-ui,sans-serif; font-weight:600;
+    text-transform:uppercase; letter-spacing:.1em; font-size:12px;
+    color:var(--ink-3); margin:0 0 7px; }
+  .stat-r { font-family:"IBM Plex Mono",ui-monospace,monospace; color:var(--ink); font-weight:500; }
+
+  details { border-top:1px solid var(--rule); padding-top:16px; }
+  summary { cursor:pointer; font-family:"Barlow Condensed",system-ui,sans-serif;
+    font-weight:600; text-transform:uppercase; letter-spacing:.1em; font-size:12.5px;
+    color:var(--ink-2); }
+  summary:focus-visible { outline:2px solid var(--s1); outline-offset:3px; }
+  .tablebox { max-height:400px; overflow:auto; margin-top:14px; border:1px solid var(--ring);
+    border-radius:8px; }
+  table { border-collapse:collapse; width:100%;
+    font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12px;
+    font-variant-numeric:tabular-nums; }
+  th { position:sticky; top:0; background:var(--surface); text-align:right; color:var(--ink-3);
+    font-weight:500; padding:8px 14px; border-bottom:1px solid var(--rule); white-space:nowrap; }
+  td { text-align:right; padding:5px 14px; color:var(--ink-2);
+    border-bottom:1px solid var(--grid); }
+  th:first-child, td:first-child { text-align:left; }
+  footer { color:var(--ink-3); font-size:13px; line-height:1.6; }
+
+  @media (max-width:820px) {
+    .console { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 20px; }
+    .clock { grid-column:1/-1; border-right:0; border-bottom:1px solid var(--rule);
+      padding:0 0 12px; flex-direction:row; align-items:baseline; gap:10px; }
+    .read .v { font-size:21px; }
+    .wrap { padding:28px 16px 48px; }
+  }
+  @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Matrix upright bike · 09 September 2026</div>
+    <h1>Program 46 Telemetry</h1>
+    <p class="lede">Three channels the workout dashboard records at 10-second resolution but never
+      shows: mechanical power, console resistance level, and cadence. Plotted on a shared clock so
+      the same instant reads straight down all three.</p>
+    <div class="meta">
+      <span>Duration <b>52:16</b></span>
+      <span>Distance <b>24.75 km</b></span>
+      <span>Samples <b>314</b></span>
+      <span>Interval <b>10 s</b></span>
+    </div>
+  </header>
+
+  <div class="console" id="console">
+    <div class="clock">
+      <span class="k" id="clock-k">Session average</span>
+      <span class="v" id="clock-v">52:16</span>
+    </div>
+    <div class="read">
+      <span class="k"><i class="dot" style="background:var(--s1)"></i>Power</span>
+      <span class="v"><span id="r-p">119</span><small>W</small></span>
+    </div>
+    <div class="read">
+      <span class="k"><i class="dot" style="background:var(--s2)"></i>Resistance</span>
+      <span class="v"><span id="r-r">5.5</span><small>level</small></span>
+    </div>
+    <div class="read">
+      <span class="k"><i class="dot" style="background:var(--s3)"></i>Cadence</span>
+      <span class="v"><span id="r-c">109</span><small>rpm</small></span>
+    </div>
+  </div>
+
+  <div class="stack" id="stack" tabindex="0" role="group"
+       aria-label="Power, resistance and cadence over time. Use left and right arrow keys to scrub.">
+    
+      <figure class="panel" style="--accent: var(--s1)">
+        <figcaption>
+          <span class="swatch" aria-hidden="true"></span>
+          <h2>Power</h2>
+          <span class="unit">watts</span>
+          <span class="range">56–165 W · avg 119</span>
+        </figcaption>
+        <svg viewBox="0 0 1000 140" preserveAspectRatio="none" role="img"
+             aria-label="Power in watts over 52 minutes, 0–180 W">
+          <line class="grid" x1="56" y1="130.0" x2="986" y2="130.0"/>
+        <text class="ytick" x="46" y="133.5">0</text>
+        <line class="grid" x1="56" y1="91.3" x2="986" y2="91.3"/>
+        <text class="ytick" x="46" y="94.8">60</text>
+        <line class="grid" x1="56" y1="52.7" x2="986" y2="52.7"/>
+        <text class="ytick" x="46" y="56.2">120</text>
+        <line class="grid" x1="56" y1="14.0" x2="986" y2="14.0"/>
+        <text class="ytick" x="46" y="17.5">180</text>
+          <path class="area" d="M56.0 86.8 L59.0 76.5 L61.9 73.9 L64.9 73.3 L67.9 73.3 L70.9 71.4 L73.8 53.3 L76.8 49.4 L79.8 43.6 L82.7 38.5 L85.7 40.4 L88.7 37.2 L91.7 28.8 L94.6 26.9 L97.6 23.7 L100.6 23.7 L103.5 24.3 L106.5 30.8 L109.5 32.0 L112.5 35.9 L115.4 41.1 L118.4 44.9 L121.4 52.7 L124.3 62.3 L127.3 65.6 L130.3 65.6 L133.3 65.6 L136.2 65.6 L139.2 66.8 L142.2 65.6 L145.1 66.2 L148.1 66.8 L151.1 66.8 L154.1 58.5 L157.0 52.7 L160.0 44.9 L163.0 37.8 L165.9 33.3 L168.9 34.6 L171.9 32.7 L174.8 33.3 L177.8 32.0 L180.8 34.6 L183.8 42.4 L186.7 44.3 L189.7 50.7 L192.7 55.9 L195.6 63.6 L198.6 70.7 L201.6 72.0 L204.6 73.3 L207.5 70.7 L210.5 64.9 L213.5 61.0 L216.4 63.6 L219.4 63.6 L222.4 57.8 L225.4 54.0 L228.3 48.8 L231.3 48.8 L234.3 48.2 L237.2 48.2 L240.2 48.2 L243.2 48.8 L246.2 48.8 L249.1 49.4 L252.1 48.8 L255.1 48.2 L258.0 48.2 L261.0 48.8 L264.0 48.2 L267.0 47.5 L269.9 47.5 L272.9 47.5 L275.9 48.2 L278.8 48.2 L281.8 50.1 L284.8 55.9 L287.8 55.9 L290.7 56.5 L293.7 56.5 L296.7 60.4 L299.6 66.2 L302.6 66.2 L305.6 64.9 L308.6 65.6 L311.5 65.6 L314.5 63.6 L317.5 55.9 L320.4 49.4 L323.4 41.1 L326.4 34.0 L329.4 33.3 L332.3 32.7 L335.3 34.6 L338.3 34.0 L341.2 34.6 L344.2 41.1 L347.2 42.4 L350.2 42.4 L353.1 49.4 L356.1 56.5 L359.1 56.5 L362.0 55.9 L365.0 56.5 L368.0 56.5 L371.0 58.5 L373.9 57.8 L376.9 57.2 L379.9 58.5 L382.8 57.2 L385.8 57.8 L388.8 59.8 L391.8 59.1 L394.7 55.9 L397.7 48.8 L400.7 38.5 L403.6 30.1 L406.6 25.6 L409.6 26.9 L412.5 26.9 L415.5 32.7 L418.5 37.8 L421.5 44.9 L424.4 44.3 L427.4 44.3 L430.4 39.8 L433.3 43.6 L436.3 43.0 L439.3 40.4 L442.3 41.1 L445.2 42.4 L448.2 43.6 L451.2 50.7 L454.1 54.0 L457.1 62.3 L460.1 66.2 L463.1 66.8 L466.0 66.2 L469.0 62.3 L472.0 54.6 L474.9 47.5 L477.9 35.9 L480.9 31.4 L483.9 30.1 L486.8 31.4 L489.8 35.3 L492.8 41.7 L495.7 50.7 L498.7 59.8 L501.7 66.8 L504.7 66.2 L507.6 66.2 L510.6 66.2 L513.6 64.3 L516.5 65.6 L519.5 64.9 L522.5 65.6 L525.5 61.0 L528.4 52.7 L531.4 54.6 L534.4 55.9 L537.3 56.5 L540.3 54.6 L543.3 55.2 L546.3 57.2 L549.2 56.5 L552.2 55.9 L555.2 56.5 L558.1 56.5 L561.1 55.9 L564.1 53.3 L567.1 54.0 L570.0 54.6 L573.0 55.2 L576.0 54.6 L578.9 54.0 L581.9 52.7 L584.9 50.7 L587.9 52.0 L590.8 55.9 L593.8 65.6 L596.8 65.6 L599.7 65.6 L602.7 66.2 L605.7 60.4 L608.7 52.0 L611.6 41.7 L614.6 30.8 L617.6 30.1 L620.5 30.8 L623.5 36.6 L626.5 39.1 L629.5 41.7 L632.4 49.4 L635.4 50.7 L638.4 50.7 L641.3 50.7 L644.3 50.7 L647.3 46.2 L650.2 44.3 L653.2 44.3 L656.2 44.9 L659.2 45.6 L662.1 49.4 L665.1 50.1 L668.1 47.5 L671.0 48.8 L674.0 47.5 L677.0 48.2 L680.0 48.2 L682.9 49.4 L685.9 46.9 L688.9 48.2 L691.8 48.8 L694.8 47.5 L697.8 48.2 L700.8 46.2 L703.7 46.2 L706.7 47.5 L709.7 48.2 L712.6 48.2 L715.6 43.0 L718.6 44.9 L721.6 47.5 L724.5 50.7 L727.5 56.5 L730.5 62.3 L733.4 64.3 L736.4 65.6 L739.4 66.2 L742.4 60.4 L745.3 52.0 L748.3 44.3 L751.3 36.6 L754.2 37.8 L757.2 37.2 L760.2 34.0 L763.2 35.3 L766.1 33.3 L769.1 28.2 L772.1 35.9 L775.0 40.4 L778.0 48.8 L781.0 52.7 L784.0 59.1 L786.9 66.2 L789.9 69.4 L792.9 69.4 L795.8 69.4 L798.8 68.1 L801.8 67.5 L804.8 72.0 L807.7 72.0 L810.7 72.0 L813.7 72.0 L816.6 64.9 L819.6 56.5 L822.6 46.9 L825.6 31.4 L828.5 28.2 L831.5 37.2 L834.5 48.8 L837.4 57.8 L840.4 64.9 L843.4 72.6 L846.4 81.7 L849.3 87.5 L852.3 92.0 L855.3 93.3 L858.2 93.3 L861.2 87.5 L864.2 83.0 L867.2 73.9 L870.1 66.8 L873.1 59.1 L876.1 50.7 L879.0 42.4 L882.0 34.0 L885.0 28.2 L887.9 27.5 L890.9 32.7 L893.9 39.8 L896.9 41.1 L899.8 39.1 L902.8 37.8 L905.8 39.1 L908.7 43.6 L911.7 56.5 L914.7 65.6 L917.7 75.2 L920.6 80.4 L923.6 81.7 L926.6 81.0 L929.5 79.1 L932.5 70.1 L935.5 61.0 L938.5 63.0 L941.4 55.2 L944.4 43.6 L947.4 42.4 L950.3 45.6 L953.3 43.0 L956.3 48.2 L959.3 55.2 L962.2 59.1 L965.2 66.2 L968.2 75.9 L971.1 84.2 L974.1 92.0 L977.1 92.6 L980.1 93.3 L983.0 93.9 L986.0 92.6 L986.0 130.0 L56.0 130.0 Z" fill="var(--s1)"/>
+          <path class="series" d="M56.0 86.8 L59.0 76.5 L61.9 73.9 L64.9 73.3 L67.9 73.3 L70.9 71.4 L73.8 53.3 L76.8 49.4 L79.8 43.6 L82.7 38.5 L85.7 40.4 L88.7 37.2 L91.7 28.8 L94.6 26.9 L97.6 23.7 L100.6 23.7 L103.5 24.3 L106.5 30.8 L109.5 32.0 L112.5 35.9 L115.4 41.1 L118.4 44.9 L121.4 52.7 L124.3 62.3 L127.3 65.6 L130.3 65.6 L133.3 65.6 L136.2 65.6 L139.2 66.8 L142.2 65.6 L145.1 66.2 L148.1 66.8 L151.1 66.8 L154.1 58.5 L157.0 52.7 L160.0 44.9 L163.0 37.8 L165.9 33.3 L168.9 34.6 L171.9 32.7 L174.8 33.3 L177.8 32.0 L180.8 34.6 L183.8 42.4 L186.7 44.3 L189.7 50.7 L192.7 55.9 L195.6 63.6 L198.6 70.7 L201.6 72.0 L204.6 73.3 L207.5 70.7 L210.5 64.9 L213.5 61.0 L216.4 63.6 L219.4 63.6 L222.4 57.8 L225.4 54.0 L228.3 48.8 L231.3 48.8 L234.3 48.2 L237.2 48.2 L240.2 48.2 L243.2 48.8 L246.2 48.8 L249.1 49.4 L252.1 48.8 L255.1 48.2 L258.0 48.2 L261.0 48.8 L264.0 48.2 L267.0 47.5 L269.9 47.5 L272.9 47.5 L275.9 48.2 L278.8 48.2 L281.8 50.1 L284.8 55.9 L287.8 55.9 L290.7 56.5 L293.7 56.5 L296.7 60.4 L299.6 66.2 L302.6 66.2 L305.6 64.9 L308.6 65.6 L311.5 65.6 L314.5 63.6 L317.5 55.9 L320.4 49.4 L323.4 41.1 L326.4 34.0 L329.4 33.3 L332.3 32.7 L335.3 34.6 L338.3 34.0 L341.2 34.6 L344.2 41.1 L347.2 42.4 L350.2 42.4 L353.1 49.4 L356.1 56.5 L359.1 56.5 L362.0 55.9 L365.0 56.5 L368.0 56.5 L371.0 58.5 L373.9 57.8 L376.9 57.2 L379.9 58.5 L382.8 57.2 L385.8 57.8 L388.8 59.8 L391.8 59.1 L394.7 55.9 L397.7 48.8 L400.7 38.5 L403.6 30.1 L406.6 25.6 L409.6 26.9 L412.5 26.9 L415.5 32.7 L418.5 37.8 L421.5 44.9 L424.4 44.3 L427.4 44.3 L430.4 39.8 L433.3 43.6 L436.3 43.0 L439.3 40.4 L442.3 41.1 L445.2 42.4 L448.2 43.6 L451.2 50.7 L454.1 54.0 L457.1 62.3 L460.1 66.2 L463.1 66.8 L466.0 66.2 L469.0 62.3 L472.0 54.6 L474.9 47.5 L477.9 35.9 L480.9 31.4 L483.9 30.1 L486.8 31.4 L489.8 35.3 L492.8 41.7 L495.7 50.7 L498.7 59.8 L501.7 66.8 L504.7 66.2 L507.6 66.2 L510.6 66.2 L513.6 64.3 L516.5 65.6 L519.5 64.9 L522.5 65.6 L525.5 61.0 L528.4 52.7 L531.4 54.6 L534.4 55.9 L537.3 56.5 L540.3 54.6 L543.3 55.2 L546.3 57.2 L549.2 56.5 L552.2 55.9 L555.2 56.5 L558.1 56.5 L561.1 55.9 L564.1 53.3 L567.1 54.0 L570.0 54.6 L573.0 55.2 L576.0 54.6 L578.9 54.0 L581.9 52.7 L584.9 50.7 L587.9 52.0 L590.8 55.9 L593.8 65.6 L596.8 65.6 L599.7 65.6 L602.7 66.2 L605.7 60.4 L608.7 52.0 L611.6 41.7 L614.6 30.8 L617.6 30.1 L620.5 30.8 L623.5 36.6 L626.5 39.1 L629.5 41.7 L632.4 49.4 L635.4 50.7 L638.4 50.7 L641.3 50.7 L644.3 50.7 L647.3 46.2 L650.2 44.3 L653.2 44.3 L656.2 44.9 L659.2 45.6 L662.1 49.4 L665.1 50.1 L668.1 47.5 L671.0 48.8 L674.0 47.5 L677.0 48.2 L680.0 48.2 L682.9 49.4 L685.9 46.9 L688.9 48.2 L691.8 48.8 L694.8 47.5 L697.8 48.2 L700.8 46.2 L703.7 46.2 L706.7 47.5 L709.7 48.2 L712.6 48.2 L715.6 43.0 L718.6 44.9 L721.6 47.5 L724.5 50.7 L727.5 56.5 L730.5 62.3 L733.4 64.3 L736.4 65.6 L739.4 66.2 L742.4 60.4 L745.3 52.0 L748.3 44.3 L751.3 36.6 L754.2 37.8 L757.2 37.2 L760.2 34.0 L763.2 35.3 L766.1 33.3 L769.1 28.2 L772.1 35.9 L775.0 40.4 L778.0 48.8 L781.0 52.7 L784.0 59.1 L786.9 66.2 L789.9 69.4 L792.9 69.4 L795.8 69.4 L798.8 68.1 L801.8 67.5 L804.8 72.0 L807.7 72.0 L810.7 72.0 L813.7 72.0 L816.6 64.9 L819.6 56.5 L822.6 46.9 L825.6 31.4 L828.5 28.2 L831.5 37.2 L834.5 48.8 L837.4 57.8 L840.4 64.9 L843.4 72.6 L846.4 81.7 L849.3 87.5 L852.3 92.0 L855.3 93.3 L858.2 93.3 L861.2 87.5 L864.2 83.0 L867.2 73.9 L870.1 66.8 L873.1 59.1 L876.1 50.7 L879.0 42.4 L882.0 34.0 L885.0 28.2 L887.9 27.5 L890.9 32.7 L893.9 39.8 L896.9 41.1 L899.8 39.1 L902.8 37.8 L905.8 39.1 L908.7 43.6 L911.7 56.5 L914.7 65.6 L917.7 75.2 L920.6 80.4 L923.6 81.7 L926.6 81.0 L929.5 79.1 L932.5 70.1 L935.5 61.0 L938.5 63.0 L941.4 55.2 L944.4 43.6 L947.4 42.4 L950.3 45.6 L953.3 43.0 L956.3 48.2 L959.3 55.2 L962.2 59.1 L965.2 66.2 L968.2 75.9 L971.1 84.2 L974.1 92.0 L977.1 92.6 L980.1 93.3 L983.0 93.9 L986.0 92.6" stroke="var(--s1)"/>
+          <line class="cross" id="x-p" x1="0" y1="10" x2="0" y2="130"/>
+          <circle class="cursor" id="d-p" r="4.5" cx="0" cy="0" fill="var(--s1)"/>
+          
+          
+        </svg>
+      </figure>
+      <figure class="panel" style="--accent: var(--s2)">
+        <figcaption>
+          <span class="swatch" aria-hidden="true"></span>
+          <h2>Resistance</h2>
+          <span class="unit">console level</span>
+          <span class="range">level 1–9 · 98 changes</span>
+        </figcaption>
+        <svg viewBox="0 0 1000 140" preserveAspectRatio="none" role="img"
+             aria-label="Resistance in console level over 52 minutes, levels 0–9">
+          <line class="grid" x1="56" y1="130.0" x2="986" y2="130.0"/>
+        <text class="ytick" x="46" y="133.5">0</text>
+        <line class="grid" x1="56" y1="91.3" x2="986" y2="91.3"/>
+        <text class="ytick" x="46" y="94.8">3</text>
+        <line class="grid" x1="56" y1="52.7" x2="986" y2="52.7"/>
+        <text class="ytick" x="46" y="56.2">6</text>
+        <line class="grid" x1="56" y1="14.0" x2="986" y2="14.0"/>
+        <text class="ytick" x="46" y="17.5">9</text>
+          
+          <path class="series" d="M56.0 91.3 H59.0V78.4 H61.9V78.4 H64.9V78.4 H67.9V78.4 H70.9V78.4 H73.8V39.8 H76.8V39.8 H79.8V39.8 H82.7V39.8 H85.7V39.8 H88.7V39.8 H91.7V26.9 H94.6V26.9 H97.6V14.0 H100.6V14.0 H103.5V14.0 H106.5V26.9 H109.5V26.9 H112.5V26.9 H115.4V39.8 H118.4V52.7 H121.4V65.6 H124.3V78.4 H127.3V78.4 H130.3V78.4 H133.3V78.4 H136.2V78.4 H139.2V78.4 H142.2V78.4 H145.1V78.4 H148.1V78.4 H151.1V78.4 H154.1V65.6 H157.0V52.7 H160.0V39.8 H163.0V26.9 H165.9V26.9 H168.9V26.9 H171.9V26.9 H174.8V26.9 H177.8V26.9 H180.8V26.9 H183.8V39.8 H186.7V39.8 H189.7V52.7 H192.7V65.6 H195.6V78.4 H198.6V91.3 H201.6V91.3 H204.6V91.3 H207.5V91.3 H210.5V91.3 H213.5V78.4 H216.4V78.4 H219.4V78.4 H222.4V65.6 H225.4V65.6 H228.3V52.7 H231.3V52.7 H234.3V52.7 H237.2V52.7 H240.2V52.7 H243.2V52.7 H246.2V52.7 H249.1V52.7 H252.1V52.7 H255.1V52.7 H258.0V52.7 H261.0V52.7 H264.0V52.7 H267.0V52.7 H269.9V52.7 H272.9V52.7 H275.9V52.7 H278.8V52.7 H281.8V52.7 H284.8V65.6 H287.8V65.6 H290.7V65.6 H293.7V65.6 H296.7V78.4 H299.6V78.4 H302.6V78.4 H305.6V78.4 H308.6V78.4 H311.5V78.4 H314.5V78.4 H317.5V65.6 H320.4V52.7 H323.4V39.8 H326.4V26.9 H329.4V26.9 H332.3V26.9 H335.3V26.9 H338.3V26.9 H341.2V26.9 H344.2V39.8 H347.2V39.8 H350.2V39.8 H353.1V52.7 H356.1V65.6 H359.1V65.6 H362.0V65.6 H365.0V65.6 H368.0V65.6 H371.0V65.6 H373.9V65.6 H376.9V65.6 H379.9V65.6 H382.8V65.6 H385.8V65.6 H388.8V65.6 H391.8V65.6 H394.7V52.7 H397.7V39.8 H400.7V26.9 H403.6V14.0 H406.6V14.0 H409.6V14.0 H412.5V14.0 H415.5V26.9 H418.5V26.9 H421.5V39.8 H424.4V39.8 H427.4V39.8 H430.4V39.8 H433.3V39.8 H436.3V39.8 H439.3V39.8 H442.3V39.8 H445.2V39.8 H448.2V39.8 H451.2V52.7 H454.1V65.6 H457.1V78.4 H460.1V78.4 H463.1V78.4 H466.0V78.4 H469.0V65.6 H472.0V52.7 H474.9V39.8 H477.9V26.9 H480.9V26.9 H483.9V26.9 H486.8V26.9 H489.8V39.8 H492.8V39.8 H495.7V52.7 H498.7V65.6 H501.7V78.4 H504.7V78.4 H507.6V78.4 H510.6V78.4 H513.6V78.4 H516.5V78.4 H519.5V78.4 H522.5V78.4 H525.5V78.4 H528.4V65.6 H531.4V65.6 H534.4V65.6 H537.3V65.6 H540.3V65.6 H543.3V65.6 H546.3V65.6 H549.2V65.6 H552.2V65.6 H555.2V65.6 H558.1V65.6 H561.1V65.6 H564.1V65.6 H567.1V65.6 H570.0V65.6 H573.0V65.6 H576.0V65.6 H578.9V65.6 H581.9V65.6 H584.9V65.6 H587.9V65.6 H590.8V65.6 H593.8V78.4 H596.8V78.4 H599.7V78.4 H602.7V78.4 H605.7V65.6 H608.7V52.7 H611.6V39.8 H614.6V26.9 H617.6V26.9 H620.5V26.9 H623.5V39.8 H626.5V39.8 H629.5V52.7 H632.4V52.7 H635.4V52.7 H638.4V52.7 H641.3V52.7 H644.3V52.7 H647.3V52.7 H650.2V52.7 H653.2V52.7 H656.2V52.7 H659.2V52.7 H662.1V52.7 H665.1V52.7 H668.1V52.7 H671.0V52.7 H674.0V52.7 H677.0V52.7 H680.0V52.7 H682.9V52.7 H685.9V52.7 H688.9V52.7 H691.8V52.7 H694.8V52.7 H697.8V52.7 H700.8V52.7 H703.7V52.7 H706.7V52.7 H709.7V52.7 H712.6V52.7 H715.6V52.7 H718.6V52.7 H721.6V52.7 H724.5V52.7 H727.5V65.6 H730.5V78.4 H733.4V78.4 H736.4V78.4 H739.4V78.4 H742.4V65.6 H745.3V52.7 H748.3V39.8 H751.3V26.9 H754.2V26.9 H757.2V26.9 H760.2V26.9 H763.2V26.9 H766.1V26.9 H769.1V26.9 H772.1V39.8 H775.0V39.8 H778.0V52.7 H781.0V65.6 H784.0V78.4 H786.9V91.3 H789.9V91.3 H792.9V91.3 H795.8V91.3 H798.8V91.3 H801.8V91.3 H804.8V91.3 H807.7V91.3 H810.7V91.3 H813.7V91.3 H816.6V78.4 H819.6V65.6 H822.6V52.7 H825.6V39.8 H828.5V39.8 H831.5V39.8 H834.5V52.7 H837.4V65.6 H840.4V78.4 H843.4V91.3 H846.4V104.2 H849.3V117.1 H852.3V117.1 H855.3V117.1 H858.2V117.1 H861.2V104.2 H864.2V104.2 H867.2V91.3 H870.1V78.4 H873.1V65.6 H876.1V52.7 H879.0V39.8 H882.0V26.9 H885.0V26.9 H887.9V26.9 H890.9V26.9 H893.9V39.8 H896.9V39.8 H899.8V39.8 H902.8V39.8 H905.8V52.7 H908.7V52.7 H911.7V65.6 H914.7V78.4 H917.7V91.3 H920.6V104.2 H923.6V104.2 H926.6V104.2 H929.5V104.2 H932.5V91.3 H935.5V78.4 H938.5V78.4 H941.4V65.6 H944.4V52.7 H947.4V52.7 H950.3V52.7 H953.3V52.7 H956.3V52.7 H959.3V65.6 H962.2V65.6 H965.2V78.4 H968.2V91.3 H971.1V104.2 H974.1V117.1 H977.1V117.1 H980.1V117.1 H983.0V117.1 H986.0V117.1" stroke="var(--s2)"/>
+          <line class="cross" id="x-r" x1="0" y1="10" x2="0" y2="130"/>
+          <circle class="cursor" id="d-r" r="4.5" cx="0" cy="0" fill="var(--s2)"/>
+          
+          
+        </svg>
+      </figure>
+      <figure class="panel" style="--accent: var(--s3)">
+        <figcaption>
+          <span class="swatch" aria-hidden="true"></span>
+          <h2>Cadence</h2>
+          <span class="unit">rpm</span>
+          <span class="range">83–127 rpm · avg 109</span>
+        </figcaption>
+        <svg viewBox="0 0 1000 160" preserveAspectRatio="none" role="img"
+             aria-label="Cadence in rpm over 52 minutes, axis starts at 70 rpm">
+          <line class="grid" x1="56" y1="110.7" x2="986" y2="110.7"/>
+        <text class="ytick" x="46" y="114.2">80</text>
+        <line class="grid" x1="56" y1="72.0" x2="986" y2="72.0"/>
+        <text class="ytick" x="46" y="75.5">100</text>
+        <line class="grid" x1="56" y1="33.3" x2="986" y2="33.3"/>
+        <text class="ytick" x="46" y="36.8">120</text>
+          
+          <path class="series" d="M56.0 104.9 L59.0 91.3 L61.9 83.6 L64.9 81.7 L67.9 79.7 L70.9 73.9 L73.8 79.7 L76.8 75.9 L79.8 62.3 L82.7 46.9 L85.7 52.7 L88.7 50.7 L91.7 44.9 L94.6 46.9 L97.6 50.7 L100.6 50.7 L103.5 52.7 L106.5 54.6 L109.5 52.7 L112.5 56.5 L115.4 54.6 L118.4 48.8 L121.4 50.7 L124.3 56.5 L127.3 56.5 L130.3 56.5 L133.3 56.5 L136.2 56.5 L139.2 60.4 L142.2 56.5 L145.1 58.5 L148.1 60.4 L151.1 60.4 L154.1 60.4 L157.0 62.3 L160.0 56.5 L163.0 56.5 L165.9 54.6 L168.9 58.5 L171.9 52.7 L174.8 54.6 L177.8 52.7 L180.8 56.5 L183.8 58.5 L186.7 56.5 L189.7 52.7 L192.7 52.7 L195.6 56.5 L198.6 52.7 L201.6 50.7 L204.6 56.5 L207.5 46.9 L210.5 39.1 L213.5 43.0 L216.4 50.7 L219.4 50.7 L222.4 50.7 L225.4 54.6 L228.3 54.6 L231.3 54.6 L234.3 52.7 L237.2 52.7 L240.2 52.7 L243.2 54.6 L246.2 54.6 L249.1 56.5 L252.1 54.6 L255.1 52.7 L258.0 52.7 L261.0 54.6 L264.0 52.7 L267.0 50.7 L269.9 50.7 L272.9 50.7 L275.9 52.7 L278.8 52.7 L281.8 56.5 L284.8 52.7 L287.8 52.7 L290.7 54.6 L293.7 54.6 L296.7 50.7 L299.6 58.5 L302.6 58.5 L305.6 54.6 L308.6 56.5 L311.5 56.5 L314.5 60.4 L317.5 62.3 L320.4 64.3 L323.4 62.3 L326.4 56.5 L329.4 54.6 L332.3 52.7 L335.3 58.5 L338.3 56.5 L341.2 56.5 L344.2 54.6 L347.2 58.5 L350.2 58.5 L353.1 56.5 L356.1 54.6 L359.1 54.6 L362.0 52.7 L365.0 54.6 L368.0 52.7 L371.0 60.4 L373.9 58.5 L376.9 56.5 L379.9 60.4 L382.8 56.5 L385.8 58.5 L388.8 62.3 L391.8 62.3 L394.7 64.3 L397.7 66.2 L400.7 60.4 L403.6 58.5 L406.6 54.6 L409.6 58.5 L412.5 58.5 L415.5 56.5 L418.5 60.4 L421.5 64.3 L424.4 62.3 L427.4 64.3 L430.4 52.7 L433.3 60.4 L436.3 60.4 L439.3 52.7 L442.3 54.6 L445.2 58.5 L448.2 62.3 L451.2 60.4 L454.1 56.5 L457.1 58.5 L460.1 58.5 L463.1 60.4 L466.0 58.5 L469.0 62.3 L472.0 62.3 L474.9 62.3 L477.9 54.6 L480.9 50.7 L483.9 46.9 L486.8 50.7 L489.8 48.8 L492.8 50.7 L495.7 56.5 L498.7 58.5 L501.7 60.4 L504.7 58.5 L507.6 58.5 L510.6 58.5 L513.6 52.7 L516.5 56.5 L519.5 54.6 L522.5 56.5 L525.5 46.9 L528.4 43.0 L531.4 48.8 L534.4 52.7 L537.3 54.6 L540.3 48.8 L543.3 50.7 L546.3 56.5 L549.2 54.6 L552.2 52.7 L555.2 54.6 L558.1 54.6 L561.1 52.7 L564.1 44.9 L567.1 46.9 L570.0 48.8 L573.0 50.7 L576.0 48.8 L578.9 46.9 L581.9 43.0 L584.9 37.2 L587.9 41.1 L590.8 46.9 L593.8 56.5 L596.8 56.5 L599.7 56.5 L602.7 58.5 L605.7 56.5 L608.7 54.6 L611.6 48.8 L614.6 41.1 L617.6 46.9 L620.5 48.8 L623.5 50.7 L626.5 48.8 L629.5 43.0 L632.4 56.5 L635.4 60.4 L638.4 60.4 L641.3 60.4 L644.3 60.4 L647.3 46.9 L650.2 41.1 L653.2 43.0 L656.2 43.0 L659.2 44.9 L662.1 56.5 L665.1 58.5 L668.1 50.7 L671.0 54.6 L674.0 50.7 L677.0 52.7 L680.0 52.7 L682.9 56.5 L685.9 48.8 L688.9 52.7 L691.8 54.6 L694.8 50.7 L697.8 52.7 L700.8 48.8 L703.7 46.9 L706.7 50.7 L709.7 52.7 L712.6 52.7 L715.6 39.1 L718.6 44.9 L721.6 50.7 L724.5 54.6 L727.5 48.8 L730.5 46.9 L733.4 52.7 L736.4 56.5 L739.4 58.5 L742.4 60.4 L745.3 58.5 L748.3 60.4 L751.3 60.4 L754.2 66.2 L757.2 64.3 L760.2 56.5 L763.2 60.4 L766.1 54.6 L769.1 43.0 L772.1 44.9 L775.0 44.9 L778.0 44.9 L781.0 43.0 L784.0 46.9 L786.9 43.0 L789.9 43.0 L792.9 43.0 L795.8 43.0 L798.8 39.1 L801.8 37.2 L804.8 52.7 L807.7 50.7 L810.7 52.7 L813.7 50.7 L816.6 50.7 L819.6 48.8 L822.6 44.9 L825.6 25.6 L828.5 19.8 L831.5 35.3 L834.5 46.9 L837.4 58.5 L840.4 56.5 L843.4 56.5 L846.4 58.5 L849.3 62.3 L852.3 66.2 L855.3 70.1 L858.2 72.0 L861.2 64.3 L864.2 64.3 L867.2 60.4 L870.1 62.3 L873.1 64.3 L876.1 62.3 L879.0 60.4 L882.0 56.5 L885.0 43.0 L887.9 41.1 L890.9 44.9 L893.9 50.7 L896.9 54.6 L899.8 48.8 L902.8 35.3 L905.8 29.5 L908.7 31.4 L911.7 44.9 L914.7 44.9 L917.7 52.7 L920.6 52.7 L923.6 56.5 L926.6 54.6 L929.5 56.5 L932.5 54.6 L935.5 43.0 L938.5 48.8 L941.4 50.7 L944.4 39.1 L947.4 35.3 L950.3 44.9 L953.3 39.1 L956.3 52.7 L959.3 58.5 L962.2 56.5 L965.2 52.7 L968.2 64.3 L971.1 70.1 L974.1 68.1 L977.1 68.1 L980.1 72.0 L983.0 73.9 L986.0 68.1" stroke="var(--s3)"/>
+          <line class="cross" id="x-c" x1="0" y1="10" x2="0" y2="130"/>
+          <circle class="cursor" id="d-c" r="4.5" cx="0" cy="0" fill="var(--s3)"/>
+          <text class="xtick" x="56.0" y="152">0</text>
+        <text class="xtick" x="145.1" y="152">5</text>
+        <text class="xtick" x="234.3" y="152">10</text>
+        <text class="xtick" x="323.4" y="152">15</text>
+        <text class="xtick" x="412.5" y="152">20</text>
+        <text class="xtick" x="501.7" y="152">25</text>
+        <text class="xtick" x="590.8" y="152">30</text>
+        <text class="xtick" x="680.0" y="152">35</text>
+        <text class="xtick" x="769.1" y="152">40</text>
+        <text class="xtick" x="858.2" y="152">45</text>
+        <text class="xtick" x="947.4" y="152">50</text>
+          <text class="xlabel" x="521.0" y="158">minutes elapsed</text>
+        </svg>
+      </figure>
+  </div>
+
+  <section class="finding">
+    <div>
+      <h3>What the three channels show</h3>
+      <p>Power follows resistance almost exactly &mdash; correlation <span class="stat-r">r = 0.98</span>
+        across all 314 samples. Every rise in the blue trace has a matching orange step underneath it.</p>
+    </div>
+    <div>
+      <h3>Cadence is the flat one</h3>
+      <p>Legs stayed at a near-constant tempo: 80% of samples fall between
+        <span class="stat-r">105 and 115 rpm</span>, a spread of
+        <span class="stat-r">4.2%</span> against power's <span class="stat-r">19.2%</span>.</p>
+    </div>
+    <div>
+      <h3>So the console did the work</h3>
+      <p>Resistance changed <span class="stat-r">98 times</span> over the hour, cycling roughly
+        level 1 to 9. Output was driven by the program's resistance steps, not by spinning faster.</p>
+    </div>
+  </section>
+
+  <details>
+    <summary>Table view &mdash; all 314 samples</summary>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>Time</th><th>Power (W)</th><th>Resistance</th><th>Cadence (rpm)</th><th>Speed (km/h)</th></tr></thead>
+        <tbody><tr><td>0:00</td><td>67</td><td>3</td><td>83</td><td>22.37</td></tr>
+<tr><td>0:10</td><td>83</td><td>4</td><td>90</td><td>24.94</td></tr>
+<tr><td>0:20</td><td>87</td><td>4</td><td>94</td><td>25.27</td></tr>
+<tr><td>0:30</td><td>88</td><td>4</td><td>95</td><td>25.43</td></tr>
+<tr><td>0:40</td><td>88</td><td>4</td><td>96</td><td>25.59</td></tr>
+<tr><td>0:50</td><td>91</td><td>4</td><td>99</td><td>25.75</td></tr>
+<tr><td>1:00</td><td>119</td><td>7</td><td>96</td><td>28.65</td></tr>
+<tr><td>1:10</td><td>125</td><td>7</td><td>98</td><td>29.13</td></tr>
+<tr><td>1:20</td><td>134</td><td>7</td><td>105</td><td>29.77</td></tr>
+<tr><td>1:30</td><td>142</td><td>7</td><td>113</td><td>30.58</td></tr>
+<tr><td>1:40</td><td>139</td><td>7</td><td>110</td><td>30.26</td></tr>
+<tr><td>1:50</td><td>144</td><td>7</td><td>111</td><td>30.58</td></tr>
+<tr><td>2:00</td><td>157</td><td>8</td><td>114</td><td>31.54</td></tr>
+<tr><td>2:10</td><td>160</td><td>8</td><td>113</td><td>31.86</td></tr>
+<tr><td>2:20</td><td>165</td><td>9</td><td>111</td><td>32.19</td></tr>
+<tr><td>2:30</td><td>165</td><td>9</td><td>111</td><td>32.19</td></tr>
+<tr><td>2:40</td><td>164</td><td>9</td><td>110</td><td>32.19</td></tr>
+<tr><td>2:50</td><td>154</td><td>8</td><td>109</td><td>31.54</td></tr>
+<tr><td>3:00</td><td>152</td><td>8</td><td>110</td><td>31.22</td></tr>
+<tr><td>3:10</td><td>146</td><td>8</td><td>108</td><td>30.90</td></tr>
+<tr><td>3:20</td><td>138</td><td>7</td><td>109</td><td>30.09</td></tr>
+<tr><td>3:30</td><td>132</td><td>6</td><td>112</td><td>29.61</td></tr>
+<tr><td>3:40</td><td>120</td><td>5</td><td>111</td><td>28.65</td></tr>
+<tr><td>3:50</td><td>105</td><td>4</td><td>108</td><td>27.20</td></tr>
+<tr><td>4:00</td><td>100</td><td>4</td><td>108</td><td>26.72</td></tr>
+<tr><td>4:10</td><td>100</td><td>4</td><td>108</td><td>26.72</td></tr>
+<tr><td>4:20</td><td>100</td><td>4</td><td>108</td><td>26.72</td></tr>
+<tr><td>4:30</td><td>100</td><td>4</td><td>108</td><td>26.72</td></tr>
+<tr><td>4:40</td><td>98</td><td>4</td><td>106</td><td>26.55</td></tr>
+<tr><td>4:50</td><td>100</td><td>4</td><td>108</td><td>26.72</td></tr>
+<tr><td>5:00</td><td>99</td><td>4</td><td>107</td><td>26.55</td></tr>
+<tr><td>5:10</td><td>98</td><td>4</td><td>106</td><td>26.55</td></tr>
+<tr><td>5:20</td><td>98</td><td>4</td><td>106</td><td>26.55</td></tr>
+<tr><td>5:30</td><td>111</td><td>5</td><td>106</td><td>27.84</td></tr>
+<tr><td>5:40</td><td>120</td><td>6</td><td>105</td><td>28.65</td></tr>
+<tr><td>5:50</td><td>132</td><td>7</td><td>108</td><td>29.61</td></tr>
+<tr><td>6:00</td><td>143</td><td>8</td><td>108</td><td>30.58</td></tr>
+<tr><td>6:10</td><td>150</td><td>8</td><td>109</td><td>31.22</td></tr>
+<tr><td>6:20</td><td>148</td><td>8</td><td>107</td><td>30.90</td></tr>
+<tr><td>6:30</td><td>151</td><td>8</td><td>110</td><td>31.22</td></tr>
+<tr><td>6:40</td><td>150</td><td>8</td><td>109</td><td>31.22</td></tr>
+<tr><td>6:50</td><td>152</td><td>8</td><td>110</td><td>31.22</td></tr>
+<tr><td>7:00</td><td>148</td><td>8</td><td>108</td><td>30.90</td></tr>
+<tr><td>7:10</td><td>136</td><td>7</td><td>107</td><td>29.93</td></tr>
+<tr><td>7:20</td><td>133</td><td>7</td><td>108</td><td>29.77</td></tr>
+<tr><td>7:30</td><td>123</td><td>6</td><td>110</td><td>28.97</td></tr>
+<tr><td>7:40</td><td>115</td><td>5</td><td>110</td><td>28.16</td></tr>
+<tr><td>7:50</td><td>103</td><td>4</td><td>108</td><td>27.04</td></tr>
+<tr><td>8:00</td><td>92</td><td>3</td><td>110</td><td>25.91</td></tr>
+<tr><td>8:10</td><td>90</td><td>3</td><td>111</td><td>25.75</td></tr>
+<tr><td>8:20</td><td>88</td><td>3</td><td>108</td><td>25.43</td></tr>
+<tr><td>8:30</td><td>92</td><td>3</td><td>113</td><td>25.91</td></tr>
+<tr><td>8:40</td><td>101</td><td>3</td><td>117</td><td>26.88</td></tr>
+<tr><td>8:50</td><td>107</td><td>4</td><td>115</td><td>27.36</td></tr>
+<tr><td>9:00</td><td>103</td><td>4</td><td>111</td><td>27.04</td></tr>
+<tr><td>9:10</td><td>103</td><td>4</td><td>111</td><td>27.04</td></tr>
+<tr><td>9:20</td><td>112</td><td>5</td><td>111</td><td>28.00</td></tr>
+<tr><td>9:30</td><td>118</td><td>5</td><td>109</td><td>28.32</td></tr>
+<tr><td>9:40</td><td>126</td><td>6</td><td>109</td><td>29.13</td></tr>
+<tr><td>9:50</td><td>126</td><td>6</td><td>109</td><td>29.13</td></tr>
+<tr><td>10:00</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>10:10</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>10:20</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>10:30</td><td>126</td><td>6</td><td>109</td><td>29.13</td></tr>
+<tr><td>10:40</td><td>126</td><td>6</td><td>109</td><td>29.13</td></tr>
+<tr><td>10:50</td><td>125</td><td>6</td><td>108</td><td>29.13</td></tr>
+<tr><td>11:00</td><td>126</td><td>6</td><td>109</td><td>29.13</td></tr>
+<tr><td>11:10</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>11:20</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>11:30</td><td>126</td><td>6</td><td>109</td><td>29.13</td></tr>
+<tr><td>11:40</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>11:50</td><td>128</td><td>6</td><td>111</td><td>29.29</td></tr>
+<tr><td>12:00</td><td>128</td><td>6</td><td>111</td><td>29.29</td></tr>
+<tr><td>12:10</td><td>128</td><td>6</td><td>111</td><td>29.45</td></tr>
+<tr><td>12:20</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>12:30</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>12:40</td><td>124</td><td>6</td><td>108</td><td>28.97</td></tr>
+<tr><td>12:50</td><td>115</td><td>5</td><td>110</td><td>28.16</td></tr>
+<tr><td>13:00</td><td>115</td><td>5</td><td>110</td><td>28.32</td></tr>
+<tr><td>13:10</td><td>114</td><td>5</td><td>109</td><td>28.00</td></tr>
+<tr><td>13:20</td><td>114</td><td>5</td><td>109</td><td>28.16</td></tr>
+<tr><td>13:30</td><td>108</td><td>4</td><td>111</td><td>27.52</td></tr>
+<tr><td>13:40</td><td>99</td><td>4</td><td>107</td><td>26.55</td></tr>
+<tr><td>13:50</td><td>99</td><td>4</td><td>107</td><td>26.55</td></tr>
+<tr><td>14:00</td><td>101</td><td>4</td><td>109</td><td>26.88</td></tr>
+<tr><td>14:10</td><td>100</td><td>4</td><td>108</td><td>26.72</td></tr>
+<tr><td>14:20</td><td>100</td><td>4</td><td>108</td><td>26.72</td></tr>
+<tr><td>14:30</td><td>103</td><td>4</td><td>106</td><td>27.04</td></tr>
+<tr><td>14:40</td><td>115</td><td>5</td><td>105</td><td>28.16</td></tr>
+<tr><td>14:50</td><td>125</td><td>6</td><td>104</td><td>29.13</td></tr>
+<tr><td>15:00</td><td>138</td><td>7</td><td>105</td><td>30.09</td></tr>
+<tr><td>15:10</td><td>149</td><td>8</td><td>108</td><td>31.06</td></tr>
+<tr><td>15:20</td><td>150</td><td>8</td><td>109</td><td>31.06</td></tr>
+<tr><td>15:30</td><td>151</td><td>8</td><td>110</td><td>31.22</td></tr>
+<tr><td>15:40</td><td>148</td><td>8</td><td>107</td><td>30.90</td></tr>
+<tr><td>15:50</td><td>149</td><td>8</td><td>108</td><td>31.06</td></tr>
+<tr><td>16:00</td><td>148</td><td>8</td><td>108</td><td>30.90</td></tr>
+<tr><td>16:10</td><td>138</td><td>7</td><td>109</td><td>30.09</td></tr>
+<tr><td>16:20</td><td>136</td><td>7</td><td>107</td><td>30.09</td></tr>
+<tr><td>16:30</td><td>136</td><td>7</td><td>107</td><td>29.93</td></tr>
+<tr><td>16:40</td><td>125</td><td>6</td><td>108</td><td>29.13</td></tr>
+<tr><td>16:50</td><td>114</td><td>5</td><td>109</td><td>28.16</td></tr>
+<tr><td>17:00</td><td>114</td><td>5</td><td>109</td><td>28.00</td></tr>
+<tr><td>17:10</td><td>115</td><td>5</td><td>110</td><td>28.16</td></tr>
+<tr><td>17:20</td><td>114</td><td>5</td><td>109</td><td>28.00</td></tr>
+<tr><td>17:30</td><td>114</td><td>5</td><td>110</td><td>28.16</td></tr>
+<tr><td>17:40</td><td>111</td><td>5</td><td>106</td><td>27.84</td></tr>
+<tr><td>17:50</td><td>112</td><td>5</td><td>107</td><td>27.84</td></tr>
+<tr><td>18:00</td><td>113</td><td>5</td><td>108</td><td>28.00</td></tr>
+<tr><td>18:10</td><td>111</td><td>5</td><td>106</td><td>27.84</td></tr>
+<tr><td>18:20</td><td>113</td><td>5</td><td>108</td><td>28.00</td></tr>
+<tr><td>18:30</td><td>112</td><td>5</td><td>107</td><td>27.84</td></tr>
+<tr><td>18:40</td><td>109</td><td>5</td><td>105</td><td>27.68</td></tr>
+<tr><td>18:50</td><td>110</td><td>5</td><td>105</td><td>27.68</td></tr>
+<tr><td>19:00</td><td>115</td><td>6</td><td>104</td><td>28.16</td></tr>
+<tr><td>19:10</td><td>126</td><td>7</td><td>103</td><td>29.13</td></tr>
+<tr><td>19:20</td><td>142</td><td>8</td><td>106</td><td>30.42</td></tr>
+<tr><td>19:30</td><td>155</td><td>9</td><td>107</td><td>31.38</td></tr>
+<tr><td>19:40</td><td>162</td><td>9</td><td>109</td><td>32.03</td></tr>
+<tr><td>19:50</td><td>160</td><td>9</td><td>107</td><td>31.86</td></tr>
+<tr><td>20:00</td><td>160</td><td>9</td><td>107</td><td>31.86</td></tr>
+<tr><td>20:10</td><td>151</td><td>8</td><td>108</td><td>31.22</td></tr>
+<tr><td>20:20</td><td>143</td><td>8</td><td>106</td><td>30.42</td></tr>
+<tr><td>20:30</td><td>132</td><td>7</td><td>104</td><td>29.77</td></tr>
+<tr><td>20:40</td><td>133</td><td>7</td><td>105</td><td>29.77</td></tr>
+<tr><td>20:50</td><td>133</td><td>7</td><td>104</td><td>29.77</td></tr>
+<tr><td>21:00</td><td>140</td><td>7</td><td>110</td><td>30.26</td></tr>
+<tr><td>21:10</td><td>134</td><td>7</td><td>106</td><td>29.93</td></tr>
+<tr><td>21:20</td><td>135</td><td>7</td><td>106</td><td>29.93</td></tr>
+<tr><td>21:30</td><td>139</td><td>7</td><td>110</td><td>30.26</td></tr>
+<tr><td>21:40</td><td>138</td><td>7</td><td>109</td><td>30.09</td></tr>
+<tr><td>21:50</td><td>136</td><td>7</td><td>107</td><td>29.93</td></tr>
+<tr><td>22:00</td><td>134</td><td>7</td><td>105</td><td>29.77</td></tr>
+<tr><td>22:10</td><td>123</td><td>6</td><td>106</td><td>28.97</td></tr>
+<tr><td>22:20</td><td>118</td><td>5</td><td>108</td><td>28.49</td></tr>
+<tr><td>22:30</td><td>105</td><td>4</td><td>107</td><td>27.20</td></tr>
+<tr><td>22:40</td><td>99</td><td>4</td><td>107</td><td>26.55</td></tr>
+<tr><td>22:50</td><td>98</td><td>4</td><td>106</td><td>26.55</td></tr>
+<tr><td>23:00</td><td>99</td><td>4</td><td>107</td><td>26.55</td></tr>
+<tr><td>23:10</td><td>105</td><td>5</td><td>105</td><td>27.20</td></tr>
+<tr><td>23:20</td><td>117</td><td>6</td><td>105</td><td>28.32</td></tr>
+<tr><td>23:30</td><td>128</td><td>7</td><td>105</td><td>29.45</td></tr>
+<tr><td>23:40</td><td>146</td><td>8</td><td>109</td><td>30.74</td></tr>
+<tr><td>23:50</td><td>153</td><td>8</td><td>111</td><td>31.38</td></tr>
+<tr><td>24:00</td><td>155</td><td>8</td><td>113</td><td>31.54</td></tr>
+<tr><td>24:10</td><td>153</td><td>8</td><td>111</td><td>31.38</td></tr>
+<tr><td>24:20</td><td>147</td><td>7</td><td>112</td><td>30.90</td></tr>
+<tr><td>24:30</td><td>137</td><td>7</td><td>111</td><td>30.09</td></tr>
+<tr><td>24:40</td><td>123</td><td>6</td><td>108</td><td>28.97</td></tr>
+<tr><td>24:50</td><td>109</td><td>5</td><td>107</td><td>27.68</td></tr>
+<tr><td>25:00</td><td>98</td><td>4</td><td>106</td><td>26.39</td></tr>
+<tr><td>25:10</td><td>99</td><td>4</td><td>107</td><td>26.55</td></tr>
+<tr><td>25:20</td><td>99</td><td>4</td><td>107</td><td>26.55</td></tr>
+<tr><td>25:30</td><td>99</td><td>4</td><td>107</td><td>26.55</td></tr>
+<tr><td>25:40</td><td>102</td><td>4</td><td>110</td><td>27.04</td></tr>
+<tr><td>25:50</td><td>100</td><td>4</td><td>108</td><td>26.72</td></tr>
+<tr><td>26:00</td><td>101</td><td>4</td><td>109</td><td>26.88</td></tr>
+<tr><td>26:10</td><td>100</td><td>4</td><td>108</td><td>26.72</td></tr>
+<tr><td>26:20</td><td>107</td><td>4</td><td>113</td><td>27.36</td></tr>
+<tr><td>26:30</td><td>120</td><td>5</td><td>115</td><td>28.65</td></tr>
+<tr><td>26:40</td><td>117</td><td>5</td><td>112</td><td>28.32</td></tr>
+<tr><td>26:50</td><td>115</td><td>5</td><td>110</td><td>28.16</td></tr>
+<tr><td>27:00</td><td>114</td><td>5</td><td>109</td><td>28.00</td></tr>
+<tr><td>27:10</td><td>117</td><td>5</td><td>112</td><td>28.32</td></tr>
+<tr><td>27:20</td><td>116</td><td>5</td><td>111</td><td>28.32</td></tr>
+<tr><td>27:30</td><td>113</td><td>5</td><td>108</td><td>28.00</td></tr>
+<tr><td>27:40</td><td>114</td><td>5</td><td>109</td><td>28.16</td></tr>
+<tr><td>27:50</td><td>115</td><td>5</td><td>110</td><td>28.32</td></tr>
+<tr><td>28:00</td><td>114</td><td>5</td><td>109</td><td>28.16</td></tr>
+<tr><td>28:10</td><td>114</td><td>5</td><td>109</td><td>28.16</td></tr>
+<tr><td>28:20</td><td>115</td><td>5</td><td>110</td><td>28.16</td></tr>
+<tr><td>28:30</td><td>119</td><td>5</td><td>114</td><td>28.49</td></tr>
+<tr><td>28:40</td><td>118</td><td>5</td><td>113</td><td>28.49</td></tr>
+<tr><td>28:50</td><td>117</td><td>5</td><td>112</td><td>28.32</td></tr>
+<tr><td>29:00</td><td>116</td><td>5</td><td>111</td><td>28.32</td></tr>
+<tr><td>29:10</td><td>117</td><td>5</td><td>112</td><td>28.49</td></tr>
+<tr><td>29:20</td><td>118</td><td>5</td><td>113</td><td>28.32</td></tr>
+<tr><td>29:30</td><td>120</td><td>5</td><td>115</td><td>28.65</td></tr>
+<tr><td>29:40</td><td>123</td><td>5</td><td>118</td><td>28.81</td></tr>
+<tr><td>29:50</td><td>121</td><td>5</td><td>116</td><td>28.81</td></tr>
+<tr><td>30:00</td><td>115</td><td>5</td><td>113</td><td>28.16</td></tr>
+<tr><td>30:10</td><td>100</td><td>4</td><td>108</td><td>26.72</td></tr>
+<tr><td>30:20</td><td>100</td><td>4</td><td>108</td><td>26.72</td></tr>
+<tr><td>30:30</td><td>100</td><td>4</td><td>108</td><td>26.72</td></tr>
+<tr><td>30:40</td><td>99</td><td>4</td><td>107</td><td>26.55</td></tr>
+<tr><td>30:50</td><td>108</td><td>5</td><td>108</td><td>27.52</td></tr>
+<tr><td>31:00</td><td>121</td><td>6</td><td>109</td><td>28.65</td></tr>
+<tr><td>31:10</td><td>137</td><td>7</td><td>112</td><td>30.09</td></tr>
+<tr><td>31:20</td><td>154</td><td>8</td><td>116</td><td>31.38</td></tr>
+<tr><td>31:30</td><td>155</td><td>8</td><td>113</td><td>31.54</td></tr>
+<tr><td>31:40</td><td>154</td><td>8</td><td>112</td><td>31.38</td></tr>
+<tr><td>31:50</td><td>145</td><td>7</td><td>111</td><td>30.74</td></tr>
+<tr><td>32:00</td><td>141</td><td>7</td><td>112</td><td>30.42</td></tr>
+<tr><td>32:10</td><td>137</td><td>6</td><td>115</td><td>30.09</td></tr>
+<tr><td>32:20</td><td>125</td><td>6</td><td>108</td><td>29.13</td></tr>
+<tr><td>32:30</td><td>123</td><td>6</td><td>106</td><td>28.97</td></tr>
+<tr><td>32:40</td><td>123</td><td>6</td><td>106</td><td>28.97</td></tr>
+<tr><td>32:50</td><td>123</td><td>6</td><td>106</td><td>28.97</td></tr>
+<tr><td>33:00</td><td>123</td><td>6</td><td>106</td><td>28.97</td></tr>
+<tr><td>33:10</td><td>130</td><td>6</td><td>113</td><td>29.45</td></tr>
+<tr><td>33:20</td><td>133</td><td>6</td><td>116</td><td>29.77</td></tr>
+<tr><td>33:30</td><td>133</td><td>6</td><td>115</td><td>29.77</td></tr>
+<tr><td>33:40</td><td>132</td><td>6</td><td>115</td><td>29.77</td></tr>
+<tr><td>33:50</td><td>131</td><td>6</td><td>114</td><td>29.61</td></tr>
+<tr><td>34:00</td><td>125</td><td>6</td><td>108</td><td>29.13</td></tr>
+<tr><td>34:10</td><td>124</td><td>6</td><td>107</td><td>28.97</td></tr>
+<tr><td>34:20</td><td>128</td><td>6</td><td>111</td><td>29.29</td></tr>
+<tr><td>34:30</td><td>126</td><td>6</td><td>109</td><td>29.13</td></tr>
+<tr><td>34:40</td><td>128</td><td>6</td><td>111</td><td>29.29</td></tr>
+<tr><td>34:50</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>35:00</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>35:10</td><td>125</td><td>6</td><td>108</td><td>29.13</td></tr>
+<tr><td>35:20</td><td>129</td><td>6</td><td>112</td><td>29.45</td></tr>
+<tr><td>35:30</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>35:40</td><td>126</td><td>6</td><td>109</td><td>29.13</td></tr>
+<tr><td>35:50</td><td>128</td><td>6</td><td>111</td><td>29.29</td></tr>
+<tr><td>36:00</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>36:10</td><td>130</td><td>6</td><td>112</td><td>29.45</td></tr>
+<tr><td>36:20</td><td>130</td><td>6</td><td>113</td><td>29.45</td></tr>
+<tr><td>36:30</td><td>128</td><td>6</td><td>111</td><td>29.29</td></tr>
+<tr><td>36:40</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>36:50</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>37:00</td><td>135</td><td>6</td><td>117</td><td>29.93</td></tr>
+<tr><td>37:10</td><td>132</td><td>6</td><td>114</td><td>29.61</td></tr>
+<tr><td>37:20</td><td>128</td><td>6</td><td>111</td><td>29.29</td></tr>
+<tr><td>37:30</td><td>123</td><td>6</td><td>109</td><td>28.97</td></tr>
+<tr><td>37:40</td><td>114</td><td>5</td><td>112</td><td>28.16</td></tr>
+<tr><td>37:50</td><td>105</td><td>4</td><td>113</td><td>27.20</td></tr>
+<tr><td>38:00</td><td>102</td><td>4</td><td>110</td><td>26.88</td></tr>
+<tr><td>38:10</td><td>100</td><td>4</td><td>108</td><td>26.72</td></tr>
+<tr><td>38:20</td><td>99</td><td>4</td><td>107</td><td>26.72</td></tr>
+<tr><td>38:30</td><td>108</td><td>5</td><td>106</td><td>27.52</td></tr>
+<tr><td>38:40</td><td>121</td><td>6</td><td>107</td><td>28.81</td></tr>
+<tr><td>38:50</td><td>133</td><td>7</td><td>106</td><td>29.77</td></tr>
+<tr><td>39:00</td><td>145</td><td>8</td><td>106</td><td>30.74</td></tr>
+<tr><td>39:10</td><td>143</td><td>8</td><td>103</td><td>30.58</td></tr>
+<tr><td>39:20</td><td>144</td><td>8</td><td>104</td><td>30.74</td></tr>
+<tr><td>39:30</td><td>149</td><td>8</td><td>108</td><td>31.06</td></tr>
+<tr><td>39:40</td><td>147</td><td>8</td><td>106</td><td>30.90</td></tr>
+<tr><td>39:50</td><td>150</td><td>8</td><td>109</td><td>31.22</td></tr>
+<tr><td>40:00</td><td>158</td><td>8</td><td>115</td><td>31.70</td></tr>
+<tr><td>40:10</td><td>146</td><td>7</td><td>114</td><td>30.90</td></tr>
+<tr><td>40:20</td><td>139</td><td>7</td><td>114</td><td>30.26</td></tr>
+<tr><td>40:30</td><td>126</td><td>6</td><td>114</td><td>29.13</td></tr>
+<tr><td>40:40</td><td>120</td><td>5</td><td>115</td><td>28.65</td></tr>
+<tr><td>40:50</td><td>110</td><td>4</td><td>113</td><td>27.68</td></tr>
+<tr><td>41:00</td><td>99</td><td>3</td><td>115</td><td>26.72</td></tr>
+<tr><td>41:10</td><td>94</td><td>3</td><td>115</td><td>26.07</td></tr>
+<tr><td>41:20</td><td>94</td><td>3</td><td>115</td><td>26.07</td></tr>
+<tr><td>41:30</td><td>94</td><td>3</td><td>115</td><td>26.07</td></tr>
+<tr><td>41:40</td><td>96</td><td>3</td><td>117</td><td>26.23</td></tr>
+<tr><td>41:50</td><td>97</td><td>3</td><td>118</td><td>26.39</td></tr>
+<tr><td>42:00</td><td>90</td><td>3</td><td>110</td><td>25.59</td></tr>
+<tr><td>42:10</td><td>90</td><td>3</td><td>111</td><td>25.75</td></tr>
+<tr><td>42:20</td><td>90</td><td>3</td><td>110</td><td>25.59</td></tr>
+<tr><td>42:30</td><td>90</td><td>3</td><td>111</td><td>25.75</td></tr>
+<tr><td>42:40</td><td>101</td><td>4</td><td>111</td><td>26.72</td></tr>
+<tr><td>42:50</td><td>114</td><td>5</td><td>112</td><td>28.16</td></tr>
+<tr><td>43:00</td><td>129</td><td>6</td><td>114</td><td>29.45</td></tr>
+<tr><td>43:10</td><td>153</td><td>7</td><td>124</td><td>31.38</td></tr>
+<tr><td>43:20</td><td>158</td><td>7</td><td>127</td><td>31.70</td></tr>
+<tr><td>43:30</td><td>144</td><td>7</td><td>119</td><td>30.74</td></tr>
+<tr><td>43:40</td><td>126</td><td>6</td><td>113</td><td>29.13</td></tr>
+<tr><td>43:50</td><td>112</td><td>5</td><td>107</td><td>27.84</td></tr>
+<tr><td>44:00</td><td>101</td><td>4</td><td>108</td><td>26.88</td></tr>
+<tr><td>44:10</td><td>89</td><td>3</td><td>108</td><td>25.59</td></tr>
+<tr><td>44:20</td><td>75</td><td>2</td><td>107</td><td>23.98</td></tr>
+<tr><td>44:30</td><td>66</td><td>1</td><td>105</td><td>22.53</td></tr>
+<tr><td>44:40</td><td>59</td><td>1</td><td>103</td><td>21.57</td></tr>
+<tr><td>44:50</td><td>57</td><td>1</td><td>101</td><td>21.40</td></tr>
+<tr><td>45:00</td><td>57</td><td>1</td><td>100</td><td>21.24</td></tr>
+<tr><td>45:10</td><td>66</td><td>2</td><td>104</td><td>22.69</td></tr>
+<tr><td>45:20</td><td>73</td><td>2</td><td>104</td><td>23.66</td></tr>
+<tr><td>45:30</td><td>87</td><td>3</td><td>106</td><td>25.27</td></tr>
+<tr><td>45:40</td><td>98</td><td>4</td><td>105</td><td>26.55</td></tr>
+<tr><td>45:50</td><td>110</td><td>5</td><td>104</td><td>27.68</td></tr>
+<tr><td>46:00</td><td>123</td><td>6</td><td>105</td><td>28.97</td></tr>
+<tr><td>46:10</td><td>136</td><td>7</td><td>106</td><td>29.93</td></tr>
+<tr><td>46:20</td><td>149</td><td>8</td><td>108</td><td>31.06</td></tr>
+<tr><td>46:30</td><td>158</td><td>8</td><td>115</td><td>31.70</td></tr>
+<tr><td>46:40</td><td>159</td><td>8</td><td>116</td><td>31.70</td></tr>
+<tr><td>46:50</td><td>151</td><td>8</td><td>114</td><td>31.22</td></tr>
+<tr><td>47:00</td><td>140</td><td>7</td><td>111</td><td>30.42</td></tr>
+<tr><td>47:10</td><td>138</td><td>7</td><td>109</td><td>30.09</td></tr>
+<tr><td>47:20</td><td>141</td><td>7</td><td>112</td><td>30.42</td></tr>
+<tr><td>47:30</td><td>143</td><td>7</td><td>119</td><td>30.58</td></tr>
+<tr><td>47:40</td><td>141</td><td>6</td><td>122</td><td>30.42</td></tr>
+<tr><td>47:50</td><td>134</td><td>6</td><td>121</td><td>29.77</td></tr>
+<tr><td>48:00</td><td>114</td><td>5</td><td>114</td><td>28.16</td></tr>
+<tr><td>48:10</td><td>100</td><td>4</td><td>114</td><td>26.72</td></tr>
+<tr><td>48:20</td><td>85</td><td>3</td><td>110</td><td>25.11</td></tr>
+<tr><td>48:30</td><td>77</td><td>2</td><td>110</td><td>24.14</td></tr>
+<tr><td>48:40</td><td>75</td><td>2</td><td>108</td><td>23.98</td></tr>
+<tr><td>48:50</td><td>76</td><td>2</td><td>109</td><td>23.98</td></tr>
+<tr><td>49:00</td><td>79</td><td>2</td><td>108</td><td>24.46</td></tr>
+<tr><td>49:10</td><td>93</td><td>3</td><td>109</td><td>25.91</td></tr>
+<tr><td>49:20</td><td>107</td><td>4</td><td>115</td><td>27.36</td></tr>
+<tr><td>49:30</td><td>104</td><td>4</td><td>112</td><td>27.20</td></tr>
+<tr><td>49:40</td><td>116</td><td>5</td><td>111</td><td>28.32</td></tr>
+<tr><td>49:50</td><td>134</td><td>6</td><td>117</td><td>29.93</td></tr>
+<tr><td>50:00</td><td>136</td><td>6</td><td>119</td><td>30.09</td></tr>
+<tr><td>50:10</td><td>131</td><td>6</td><td>114</td><td>29.61</td></tr>
+<tr><td>50:20</td><td>135</td><td>6</td><td>117</td><td>29.93</td></tr>
+<tr><td>50:30</td><td>127</td><td>6</td><td>110</td><td>29.29</td></tr>
+<tr><td>50:40</td><td>116</td><td>5</td><td>107</td><td>28.32</td></tr>
+<tr><td>50:50</td><td>110</td><td>5</td><td>108</td><td>27.68</td></tr>
+<tr><td>51:00</td><td>99</td><td>4</td><td>110</td><td>26.72</td></tr>
+<tr><td>51:10</td><td>84</td><td>3</td><td>104</td><td>24.94</td></tr>
+<tr><td>51:20</td><td>71</td><td>2</td><td>101</td><td>23.34</td></tr>
+<tr><td>51:30</td><td>59</td><td>1</td><td>102</td><td>21.73</td></tr>
+<tr><td>51:40</td><td>58</td><td>1</td><td>102</td><td>21.57</td></tr>
+<tr><td>51:50</td><td>57</td><td>1</td><td>100</td><td>21.24</td></tr>
+<tr><td>52:00</td><td>56</td><td>1</td><td>99</td><td>21.08</td></tr>
+<tr><td>52:10</td><td>58</td><td>1</td><td>102</td><td>21.57</td></tr></tbody>
+      </table>
+    </div>
+  </details>
+
+  <footer>Recorded by machine <code>cbe3c742</code> and read from the Matrix workout record.
+    Heart rate is omitted here: 40 of its 314 samples are strap dropouts.</footer>
+</div>
+
+<script>
+(function () {
+  var D = {"t":[0,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200,210,220,230,240,250,260,270,280,290,300,310,320,330,340,350,360,370,380,390,400,410,420,430,440,450,460,470,480,490,500,510,520,530,540,550,560,570,580,590,600,610,620,630,640,650,660,670,680,690,700,710,720,730,740,750,760,770,780,790,800,810,820,830,840,850,860,870,880,890,900,910,920,930,940,950,960,970,980,990,1000,1010,1020,1030,1040,1050,1060,1070,1080,1090,1100,1110,1120,1130,1140,1150,1160,1170,1180,1190,1200,1210,1220,1230,1240,1250,1260,1270,1280,1290,1300,1310,1320,1330,1340,1350,1360,1370,1380,1390,1400,1410,1420,1430,1440,1450,1460,1470,1480,1490,1500,1510,1520,1530,1540,1550,1560,1570,1580,1590,1600,1610,1620,1630,1640,1650,1660,1670,1680,1690,1700,1710,1720,1730,1740,1750,1760,1770,1780,1790,1800,1810,1820,1830,1840,1850,1860,1870,1880,1890,1900,1910,1920,1930,1940,1950,1960,1970,1980,1990,2000,2010,2020,2030,2040,2050,2060,2070,2080,2090,2100,2110,2120,2130,2140,2150,2160,2170,2180,2190,2200,2210,2220,2230,2240,2250,2260,2270,2280,2290,2300,2310,2320,2330,2340,2350,2360,2370,2380,2390,2400,2410,2420,2430,2440,2450,2460,2470,2480,2490,2500,2510,2520,2530,2540,2550,2560,2570,2580,2590,2600,2610,2620,2630,2640,2650,2660,2670,2680,2690,2700,2710,2720,2730,2740,2750,2760,2770,2780,2790,2800,2810,2820,2830,2840,2850,2860,2870,2880,2890,2900,2910,2920,2930,2940,2950,2960,2970,2980,2990,3000,3010,3020,3030,3040,3050,3060,3070,3080,3090,3100,3110,3120,3130],"p":[67,83,87,88,88,91,119,125,134,142,139,144,157,160,165,165,164,154,152,146,138,132,120,105,100,100,100,100,98,100,99,98,98,111,120,132,143,150,148,151,150,152,148,136,133,123,115,103,92,90,88,92,101,107,103,103,112,118,126,126,127,127,127,126,126,125,126,127,127,126,127,128,128,128,127,127,124,115,115,114,114,108,99,99,101,100,100,103,115,125,138,149,150,151,148,149,148,138,136,136,125,114,114,115,114,114,111,112,113,111,113,112,109,110,115,126,142,155,162,160,160,151,143,132,133,133,140,134,135,139,138,136,134,123,118,105,99,98,99,105,117,128,146,153,155,153,147,137,123,109,98,99,99,99,102,100,101,100,107,120,117,115,114,117,116,113,114,115,114,114,115,119,118,117,116,117,118,120,123,121,115,100,100,100,99,108,121,137,154,155,154,145,141,137,125,123,123,123,123,130,133,133,132,131,125,124,128,126,128,127,127,125,129,127,126,128,127,130,130,128,127,127,135,132,128,123,114,105,102,100,99,108,121,133,145,143,144,149,147,150,158,146,139,126,120,110,99,94,94,94,96,97,90,90,90,90,101,114,129,153,158,144,126,112,101,89,75,66,59,57,57,66,73,87,98,110,123,136,149,158,159,151,140,138,141,143,141,134,114,100,85,77,75,76,79,93,107,104,116,134,136,131,135,127,116,110,99,84,71,59,58,57,56,58],"r":[3,4,4,4,4,4,7,7,7,7,7,7,8,8,9,9,9,8,8,8,7,6,5,4,4,4,4,4,4,4,4,4,4,5,6,7,8,8,8,8,8,8,8,7,7,6,5,4,3,3,3,3,3,4,4,4,5,5,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,5,5,5,5,4,4,4,4,4,4,4,5,6,7,8,8,8,8,8,8,7,7,7,6,5,5,5,5,5,5,5,5,5,5,5,5,5,6,7,8,9,9,9,9,8,8,7,7,7,7,7,7,7,7,7,7,6,5,4,4,4,4,5,6,7,8,8,8,8,7,7,6,5,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,4,4,4,4,5,6,7,8,8,8,7,7,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,5,4,4,4,4,5,6,7,8,8,8,8,8,8,8,7,7,6,5,4,3,3,3,3,3,3,3,3,3,3,4,5,6,7,7,7,6,5,4,3,2,1,1,1,1,2,2,3,4,5,6,7,8,8,8,8,7,7,7,7,6,6,5,4,3,2,2,2,2,3,4,4,5,6,6,6,6,6,5,5,4,3,2,1,1,1,1,1],"c":[83,90,94,95,96,99,96,98,105,113,110,111,114,113,111,111,110,109,110,108,109,112,111,108,108,108,108,108,106,108,107,106,106,106,105,108,108,109,107,110,109,110,108,107,108,110,110,108,110,111,108,113,117,115,111,111,111,109,109,109,110,110,110,109,109,108,109,110,110,109,110,111,111,111,110,110,108,110,110,109,109,111,107,107,109,108,108,106,105,104,105,108,109,110,107,108,108,109,107,107,108,109,109,110,109,110,106,107,108,106,108,107,105,105,104,103,106,107,109,107,107,108,106,104,105,104,110,106,106,110,109,107,105,106,108,107,107,106,107,105,105,105,109,111,113,111,112,111,108,107,106,107,107,107,110,108,109,108,113,115,112,110,109,112,111,108,109,110,109,109,110,114,113,112,111,112,113,115,118,116,113,108,108,108,107,108,109,112,116,113,112,111,112,115,108,106,106,106,106,113,116,115,115,114,108,107,111,109,111,110,110,108,112,110,109,111,110,112,113,111,110,110,117,114,111,109,112,113,110,108,107,106,107,106,106,103,104,108,106,109,115,114,114,114,115,113,115,115,115,115,117,118,110,111,110,111,111,112,114,124,127,119,113,107,108,108,107,105,103,101,100,104,104,106,105,104,105,106,108,115,116,114,111,109,112,119,122,121,114,114,110,110,108,109,108,109,115,112,111,117,119,114,117,110,107,108,110,104,101,102,102,100,99,102],"s":[22.37,24.94,25.27,25.43,25.59,25.75,28.65,29.13,29.77,30.58,30.26,30.58,31.54,31.86,32.19,32.19,32.19,31.54,31.22,30.9,30.09,29.61,28.65,27.2,26.72,26.72,26.72,26.72,26.55,26.72,26.55,26.55,26.55,27.84,28.65,29.61,30.58,31.22,30.9,31.22,31.22,31.22,30.9,29.93,29.77,28.97,28.16,27.04,25.91,25.75,25.43,25.91,26.88,27.36,27.04,27.04,28.0,28.32,29.13,29.13,29.29,29.29,29.29,29.13,29.13,29.13,29.13,29.29,29.29,29.13,29.29,29.29,29.29,29.45,29.29,29.29,28.97,28.16,28.32,28.0,28.16,27.52,26.55,26.55,26.88,26.72,26.72,27.04,28.16,29.13,30.09,31.06,31.06,31.22,30.9,31.06,30.9,30.09,30.09,29.93,29.13,28.16,28.0,28.16,28.0,28.16,27.84,27.84,28.0,27.84,28.0,27.84,27.68,27.68,28.16,29.13,30.42,31.38,32.03,31.86,31.86,31.22,30.42,29.77,29.77,29.77,30.26,29.93,29.93,30.26,30.09,29.93,29.77,28.97,28.49,27.2,26.55,26.55,26.55,27.2,28.32,29.45,30.74,31.38,31.54,31.38,30.9,30.09,28.97,27.68,26.39,26.55,26.55,26.55,27.04,26.72,26.88,26.72,27.36,28.65,28.32,28.16,28.0,28.32,28.32,28.0,28.16,28.32,28.16,28.16,28.16,28.49,28.49,28.32,28.32,28.49,28.32,28.65,28.81,28.81,28.16,26.72,26.72,26.72,26.55,27.52,28.65,30.09,31.38,31.54,31.38,30.74,30.42,30.09,29.13,28.97,28.97,28.97,28.97,29.45,29.77,29.77,29.77,29.61,29.13,28.97,29.29,29.13,29.29,29.29,29.29,29.13,29.45,29.29,29.13,29.29,29.29,29.45,29.45,29.29,29.29,29.29,29.93,29.61,29.29,28.97,28.16,27.2,26.88,26.72,26.72,27.52,28.81,29.77,30.74,30.58,30.74,31.06,30.9,31.22,31.7,30.9,30.26,29.13,28.65,27.68,26.72,26.07,26.07,26.07,26.23,26.39,25.59,25.75,25.59,25.75,26.72,28.16,29.45,31.38,31.7,30.74,29.13,27.84,26.88,25.59,23.98,22.53,21.57,21.4,21.24,22.69,23.66,25.27,26.55,27.68,28.97,29.93,31.06,31.7,31.7,31.22,30.42,30.09,30.42,30.58,30.42,29.77,28.16,26.72,25.11,24.14,23.98,23.98,24.46,25.91,27.36,27.2,28.32,29.93,30.09,29.61,29.93,29.29,28.32,27.68,26.72,24.94,23.34,21.73,21.57,21.24,21.08,21.57]};
+  var N = D.t.length, X0 = 56, X1 = 986, VW = 1000, TOP = 14, PH = 116;
+  var stack = document.getElementById('stack');
+  var conf = {
+    p: { vals: D.p, lo: 0,  hi: 180 },
+    r: { vals: D.r, lo: 0,  hi: 9   },
+    c: { vals: D.c, lo: 70, hi: 130 }
+  };
+  var keys = ['p', 'r', 'c'];
+  var el = {};
+  keys.forEach(function (k) {
+    el[k] = { line: document.getElementById('x-' + k), dot: document.getElementById('d-' + k),
+               out: document.getElementById('r-' + k) };
+  });
+  var clockK = document.getElementById('clock-k'), clockV = document.getElementById('clock-v');
+  var idx = -1;
+
+  function fmt(s) { return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+
+  function show(i) {
+    if (i === idx) return;
+    idx = i;
+    if (i < 0) {
+      stack.classList.remove('live');
+      clockK.textContent = 'Session average';
+      clockV.textContent = '52:16';
+      el.p.out.textContent = '119'; el.r.out.textContent = '5.5'; el.c.out.textContent = '109';
+      return;
+    }
+    stack.classList.add('live');
+    var x = X0 + (X1 - X0) * i / (N - 1);
+    keys.forEach(function (k) {
+      var c = conf[k], v = c.vals[i];
+      var y = TOP + PH * (1 - (v - c.lo) / (c.hi - c.lo));
+      el[k].line.setAttribute('x1', x); el[k].line.setAttribute('x2', x);
+      el[k].dot.setAttribute('cx', x);  el[k].dot.setAttribute('cy', y);
+      el[k].out.textContent = v;
+    });
+    clockK.textContent = 'At';
+    clockV.textContent = fmt(D.t[i]);
+  }
+
+  function fromEvent(e) {
+    var svg = stack.querySelector('svg');
+    var box = svg.getBoundingClientRect();
+    var vx = (e.clientX - box.left) / box.width * VW;
+    var i = Math.round((vx - X0) / (X1 - X0) * (N - 1));
+    show(Math.max(0, Math.min(N - 1, i)));
+  }
+
+  stack.addEventListener('pointermove', fromEvent);
+  stack.addEventListener('pointerdown', fromEvent);
+  stack.addEventListener('pointerleave', function () { show(-1); });
+  stack.addEventListener('keydown', function (e) {
+    var step = e.shiftKey ? 30 : 1, cur = idx < 0 ? 0 : idx;
+    if (e.key === 'ArrowRight') { show(Math.min(N - 1, cur + step)); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft') { show(Math.max(0, cur - step)); e.preventDefault(); }
+    else if (e.key === 'Escape') { show(-1); }
+  });
+})();
+</script>
