@@ -334,6 +334,14 @@ Decisions taken up front (revisit deliberately, don't drift):
   one element restores the stock page exactly. Every view carries a **Show stock
   page** button, and a parse failure renders a readable explanation — never a blank
   sheet over the user's real dashboard.
+- **Handing the page back must be reversible.** *Show stock page* collapses the
+  overlay to a corner pill rather than dismissing it. This is not polish: the stock
+  page renders its own "Oops! An error has occurred." for any workout outside the
+  cached week, so a one-way hide strands the user on that error with no route back
+  to the view that was working. Collapsed, the host shrinks to the pill — a
+  full-viewport host would keep swallowing clicks meant for the page underneath.
+  Leaving the workout route destroys the surface outright; the pill must never
+  float over a page this extension does not handle.
 - **No webfonts.** The prototype pulls Barlow and IBM Plex Mono from Google Fonts;
   the extension makes no external request, so `src/ui/styles.css` is system stacks
   only. Do not reintroduce a remote font.

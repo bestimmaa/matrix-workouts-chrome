@@ -66,6 +66,36 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+/* The way back in after handing the page over. Deliberately small and out of the
+   way, but never absent — the stock page errors outright on older workouts. */
+.launcher {
+  font-family: var(--sans);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--ring);
+  border-radius: 999px;
+  padding: 9px 15px;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.28);
+}
+.launcher::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--s1);
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+.launcher:hover { border-color: var(--s1); }
+.launcher:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
 
 .sheet {
   position: fixed;

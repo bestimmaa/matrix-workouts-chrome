@@ -29,10 +29,13 @@ function ensureSurface(): Surface {
   return surface;
 }
 
+/**
+ * Hand the page back to the site. Reversible: the surface leaves a pill behind,
+ * because the stock page shows its own error for anything outside the cached week
+ * and a one-way hide would strand the user on it.
+ */
 function showStock(): void {
-  surface?.hide();
-  // Leaving the route and coming back should bring our view back.
-  renderedId = null;
+  surface?.collapse();
 }
 
 function shell(children: (Node | string)[]): HTMLElement {
@@ -112,7 +115,10 @@ function renderRoute(pathname: string): void {
   const id = workoutIdFromPath(pathname);
 
   if (id === null) {
-    surface?.hide();
+    // Off the workout route entirely: remove ourselves completely rather than
+    // leaving a pill floating over a page this extension does not handle.
+    surface?.destroy();
+    surface = null;
     renderedId = null;
     return;
   }
@@ -142,7 +148,7 @@ function renderRoute(pathname: string): void {
     renderedId = null;
   }
 
-  view.show();
+  view.expand();
 }
 
 function start(): void {
