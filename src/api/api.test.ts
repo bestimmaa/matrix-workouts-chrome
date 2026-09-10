@@ -8,25 +8,15 @@ const TOKEN = "test-token-do-not-use-a-real-one";
 const CREDENTIALS = { exerciserId: "ex-1", token: TOKEN };
 
 /**
- * The API speaks snake_case where the cached blob speaks camelCase, so the test
- * data is a real fixture with its keys converted — the shape the client actually
- * meets, rather than the one the parser tests already cover.
+ * A real API response record — captured from `apollo.jfit.co`, not converted from a
+ * cached one. The API speaks snake_case where the localStorage blob speaks camelCase,
+ * and this is the only fixture in the repo that carries the API's own shape, so it is
+ * what the client should be tested against.
  *
  * NOTE: no fixture in this repo carries a real bearer token, and none should.
  */
-function snakeCase(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(snakeCase);
-  if (typeof value !== "object" || value === null) return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).map(([key, v]) => [
-      key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`),
-      snakeCase(v),
-    ]),
-  );
-}
-
-const RECORD = snakeCase(
-  JSON.parse(readFileSync("fixtures/raw-6aa045668d2b6d09c612785d.json", "utf8")),
+const RECORD = JSON.parse(
+  readFileSync("fixtures/raw-6a998daf8d2b6d09c6e334d2.json", "utf8"),
 ) as Record<string, unknown>;
 
 function respond(body: unknown, status = 200): FetchLike {
@@ -86,6 +76,16 @@ describe("workoutsUrl", () => {
 });
 
 describe("fetchWorkoutHistory", () => {
+  it("is a genuinely snake_case record, not a camelCase one in disguise", () => {
+    // If someone "normalizes" this fixture, the client loses its only real test.
+    expect(RECORD["workout_id"]).toBe("6a998daf8d2b6d09c6e334d2");
+    expect(RECORD["workoutId"]).toBeUndefined();
+    const first = (RECORD["intervals"] as Record<string, unknown>[])[0]!;
+    expect(first["heart_rate"]).toBeDefined();
+    expect(first["average_distance"]).toBeDefined();
+    expect(first["averageDistance"]).toBeUndefined();
+  });
+
   it("sends the bearer token and parses the snake_case response", async () => {
     let seen: { url: string; headers: Record<string, string> } | null = null;
     const fetchImpl: FetchLike = async (url, init) => {
@@ -98,16 +98,16 @@ describe("fetchWorkoutHistory", () => {
     expect(seen!.url).toBe("https://apollo.jfit.co/exerciser/ex-1/workouts");
     expect(seen!.headers["Authorization"]).toBe(`Bearer ${TOKEN}`);
     expect(result.workouts).toHaveLength(1);
-    expect(result.workouts[0]!.id).toBe("6aa045668d2b6d09c612785d");
+    expect(result.workouts[0]!.id).toBe("6a998daf8d2b6d09c6e334d2");
     // Intervals survive the round trip: this endpoint is the only source of them.
-    expect(result.workouts[0]!.samples).toHaveLength(272);
+    expect(result.workouts[0]!.samples).toHaveLength(362);
     expect(result.workouts[0]!.samples[0]!.powerWatts).toBeGreaterThan(0);
   });
 
   it("returns newest first", async () => {
     const older = { ...RECORD, workout_id: "older", workout_time: "2026-01-01T10:00:00Z" };
     const result = await fetchWorkoutHistory(CREDENTIALS, respond({ workouts: [older, RECORD] }));
-    expect(result.workouts.map((w) => w.id)).toEqual(["6aa045668d2b6d09c612785d", "older"]);
+    expect(result.workouts.map((w) => w.id)).toEqual(["6a998daf8d2b6d09c6e334d2", "older"]);
   });
 
   it("accepts a bare array, in case the envelope changes", async () => {

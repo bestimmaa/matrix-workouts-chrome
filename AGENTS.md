@@ -317,6 +317,12 @@ resistance as the driver of output is wrong there. Read the series, not the habi
   `minHeartRate` and `maxHeartRate` disagree with the series (e.g. reported min 87
   vs series min 0/86; reported max 169 vs series max 168). Compute your own from the
   samples if you need internal consistency, and say which you are showing.
+
+  **But "not derived from" does not mean "worse".** On the 03 Sep ride the reported
+  average of 153 bpm matches the rider's Apple Watch exactly, while the filtered
+  series averages 151 — the console appears to have averaged in real time, before the
+  dropouts that the series preserves. So on a badly glitching strap the reported
+  figure can be the more accurate one. Show both rather than assuming either wins.
 - `averageDistance` is cumulative, `distance` is the delta. The names lie.
 - **The final interval's `duration` is NOT always 0.** Observed: 0, 1, 2, 3, 5, 6, 7,
   8, 10 and 11. **Never compute elapsed time as `index * 10`** — accumulate each
@@ -507,10 +513,21 @@ This handles personal health data.
 **Vitest**, unit tests against `fixtures/`. All fixtures are **real captured
 records** — do not "clean" them, the mess is the point.
 
-`fixtures/persist-root.json` is a synthetic `localStorage` blob wrapping all eight
+`fixtures/persist-root.json` is a synthetic `localStorage` blob wrapping eight of the
 real records in the true double-encoded shape; it is what the parser tests load.
 Each `raw-<workoutId>.json` is one record, with a `.csv` of the same series beside
 it for eyeballing.
+
+**`raw-6a998daf…` is the odd one out, deliberately.** Every other fixture is the
+camelCase localStorage shape; this one was captured from `apollo.jfit.co` and is the
+API's own snake_case, which makes it the only honest test input for `src/api/`
+(the alternative — converting a camelCase fixture in the test — tests the converter,
+not the client). It is therefore **not** in `persist-root.json`, and a test asserts it
+stays snake_case so nobody "normalizes" it away.
+
+It also carries the project's only independent ground truth: the rider wore an Apple
+Watch for that hour, which recorded a smooth trace averaging **153 bpm over 93–172**.
+Use it when changing anything about heart-rate filtering.
 
 | Fixture | Program | Samples | Why it is here |
 |---|---|---|---|
@@ -522,6 +539,7 @@ it for eyeballing.
 | `6a7cab8c…` | 20 target watts | 277 | the confirmed watt-target ride |
 | `6a6368cb…` | 46 | 376 | **recumbent** — the only non-upright ride; strap dead for 215 samples; final sample `duration: 8` |
 | `6a5e4fe4…` | 38 | 89 | resistance pinned at 1 while power ramps — breaks the "power follows resistance" assumption |
+| `6a998daf…` | 20 target watts | 362 | **snake_case, captured from the API**; strap glitching badly, and the only ride with independent ground truth |
 
 Between them these cover every `programType` in the account (0, 18, 20, 38, 46, 47)
 and both bike types.

@@ -30,6 +30,9 @@ const PROGRAM_47 = "6a8336b68d2b6d09c634fc60"; // 17 Aug, program 47, only 19 sa
 const PROGRAM_20 = "6a7cab8cc23a154bebccef65"; // 12 Aug, program 20
 const PROGRAM_38 = "6a5e4fe418e8655524aebab4"; // 20 Jul, program 38, constant resistance
 const RECUMBENT = "6a6368cb18e8655524dbb05d"; // 24 Jul, the only recumbent ride
+// 03 Sep, program 20. Captured from the API, so it is snake_case rather than the
+// camelCase of the cached blob, and it is not in persist-root.json.
+const API_SHAPED = "6a998daf8d2b6d09c6e334d2";
 
 const storage = (value: string | null): ReadableStorage => ({
   getItem: (key) => (key === PERSIST_KEY ? value : null),
@@ -426,6 +429,27 @@ describe("heart rate quality", () => {
       expect(
         heartRateStats(program0.samples, { driftBpmPerSecond: 0 }).dropoutCount,
       ).toBeGreaterThan(50);
+    });
+
+    /**
+     * The 03 Sep ride is the only one with an independent second opinion: the rider
+     * wore an Apple Watch, which recorded a smooth trace averaging 153 bpm over
+     * 93-172 for the same hour. The console's own series for that hour drops to 15,
+     * 32, 47 and 49 between neighbouring 155s and 160s, so a third of it is genuinely
+     * junk — and the filter has to throw that away without moving the average.
+     */
+    it("recovers the true average from a badly glitching strap", () => {
+      const watts = toWorkout(
+        JSON.parse(fixture(`raw-${API_SHAPED}.json`)) as Record<string, unknown>,
+      );
+      const stats = heartRateStats(watts.samples);
+
+      expect(stats.dropoutCount).toBeGreaterThan(100);
+      // Apple Watch ground truth: 153 avg, 93-172.
+      expect(Math.round(stats.meanBpm!)).toBeGreaterThanOrEqual(148);
+      expect(Math.round(stats.meanBpm!)).toBeLessThanOrEqual(158);
+      expect(stats.maxBpm).toBeLessThanOrEqual(176);
+      expect(stats.minBpm).toBeGreaterThan(60);
     });
 
     it("leaves the clean ride and the dead strap where they were", () => {
