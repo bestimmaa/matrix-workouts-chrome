@@ -93,6 +93,10 @@ const workouts  = userStore.workouts;           // array of workout records
 Note the double parse — `root` is a JSON object whose values are themselves JSON
 strings. Keys present: `authStore`, `configStore`, `navigationStore`, `userStore`.
 
+**But not always.** Observed live on 10 Sep 2026: `root.userStore` was an already-parsed
+*object*, not a JSON string. Both shapes occur, so never assume either —
+`parsePersistSlice` accepts both and everything must go through it.
+
 **Prefer localStorage over the API.** It needs no token, no network, and no
 permission beyond the content script. Treat the API as the fallback for history
 deeper than what the app has cached (see below).
@@ -127,7 +131,8 @@ Implemented in `src/api/`. Three things about it are deliberate:
   (with a stub) and in the browser. The worker hard-allowlists the API origin: the
   url arrives from a content script, which shares a page with code we do not control.
 - **Paging is not followed.** The endpoint has returned every record in one response
-  on every account seen. Inventing page parameters against an undocumented API is a
+  on every account seen — confirmed live on 10 Sep 2026, where `paging` came back as
+  `{ returned: 43, total: 43, page: 1 }`. Inventing page parameters against an undocumented API is a
   good way to silently truncate someone's history, so a `paging.total` larger than
   what arrived surfaces as `truncated` instead.
 - **One bad record does not cost the user their history.** Records that fail to parse
@@ -277,11 +282,37 @@ resistance as the driver of output is wrong there. Read the series, not the habi
 ### Data-quality gotchas
 
 - **Heart-rate dropouts, and they can be most of the ride.** Chest-strap glitches
-  show up as implausibly low values including literal `0`, `14`, `15`, `30`. Range
-  across the fixtures: 0 dropouts (08 Sep) → 40 of 314 (09 Sep) → **215 of 376** on
-  the recumbent ride, where the strap died halfway and never recovered. **Filter
-  before charting or averaging**, label the filter, and never assume a majority of
-  samples are good.
+  show up as implausibly low values including literal `0`, `14`, `15`, `30`, and
+  softer ones in the 80s and 90s during a 150 bpm ride. Counts after filtering:
+  0 of 272 (08 Sep, the control) → 80 of 314 (09 Sep) → 134 of 362 (03 Sep) →
+  **231 of 376** on the recumbent ride, where the strap died halfway and never
+  recovered. **Filter before charting or averaging**, label the filter, and never
+  assume a majority of samples are good.
+
+  **A high rejection rate is usually the strap, not the filter.** Validated against
+  an independent sensor: on the 03 Sep ride the rider's Apple Watch recorded a smooth
+  trace averaging 153 bpm over 93–172, while the console's own series for the same
+  hour is littered with single-sample drops to 15, 32, 47 and 49 sitting between
+  neighbouring 155s and 160s. The filtered series averages 151 over 98–173 — within
+  two bpm of the watch — so throwing away a third of that ride was right.
+
+  The filter (`src/parse/heartRate.ts`) is an absolute floor plus a rate-of-change
+  check, and two things about the rate check are load-bearing:
+
+  - **The reference goes stale.** It compares against the last *accepted* sample,
+    which may be minutes back, and over minutes a heart rate legitimately moves much
+    further than it can in ten seconds. Rejecting a recovered sample for being far
+    from a stale reference keeps the reference stale and rejects the next one too.
+    That cascade threw away **58 of 61 samples** on the program-0 ride, which does not
+    contain a single reading under 60 bpm. The allowance therefore widens with the gap.
+  - **The widening is asymmetric, because dropouts are low-biased.** A failing strap
+    reads low, never high. Widening equally in both directions admits the softer
+    glitches, and the reference then anchors on an 86 and rejects the genuine 140s
+    behind it — measurably worse, 83 rejections to 89 on one fixture. Rises get the
+    full allowance immediately; falls get none until the gap passes a grace window.
+
+  The constants are physiological in kind and empirical in value. `npm test` pins the
+  outcome on every fixture; re-run it if you touch them.
 - **Reported summaries are not derived from the intervals.** `averageHeartRate`,
   `minHeartRate` and `maxHeartRate` disagree with the series (e.g. reported min 87
   vs series min 0/86; reported max 169 vs series max 168). Compute your own from the
@@ -483,7 +514,7 @@ it for eyeballing.
 
 | Fixture | Program | Samples | Why it is here |
 |---|---|---|---|
-| `6aa194a0…` | 46 target HR | 314 | 40 HR dropouts including zeros |
+| `6aa194a0…` | 46 target HR | 314 | 80 HR dropouts including zeros |
 | `6aa04566…` | 46 target HR | 272 | the control: strap clean throughout |
 | `6a95b033…` | **18 Sprint 8** | 121 | the only structural variant; sprint scores, 400 W spikes, resistance 23 |
 | `6a941332…` | 0 | 61 | unidentified program |

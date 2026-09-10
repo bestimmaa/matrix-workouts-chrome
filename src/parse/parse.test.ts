@@ -376,6 +376,67 @@ describe("heart rate quality", () => {
     expect(flagHeartRateDropouts(samples)).toEqual([true, false, false, false, true]);
   });
 
+  /**
+   * The reference goes stale across a gap, and the rate check has to widen with it.
+   * Comparing a recovered sample against a value from two minutes ago rejects it for
+   * being far from something no longer relevant — which keeps the reference stale and
+   * rejects the next one too. See the note in heartRate.ts.
+   */
+  describe("a stale reference", () => {
+    const series = (bpms: number[]) =>
+      bpms.map((bpm, i) => ({ ...clean.samples[i]!, heartRateBpm: bpm }));
+
+    it("accepts a rate that legitimately climbed while the strap was out", () => {
+      // 90 s of nothing, then a rate 40 bpm higher: impossible in 10 s, ordinary in 90.
+      const samples = series([140, ...Array<number>(9).fill(0), 180]);
+      const valid = flagHeartRateDropouts(samples);
+      expect(valid[0]).toBe(true);
+      expect(valid.at(-1)).toBe(true);
+      // The fixed-window check could not see past its own 25 bpm.
+      expect(flagHeartRateDropouts(samples, { driftBpmPerSecond: 0 }).at(-1)).toBe(false);
+    });
+
+    it("accepts a rate that legitimately fell across a long gap", () => {
+      const samples = series([150, ...Array<number>(20).fill(0), 105]);
+      expect(flagHeartRateDropouts(samples).at(-1)).toBe(true);
+    });
+
+    it("still rejects a soft dropout after a short gap", () => {
+      // A strap fails low, so a sharp drop right after a brief gap is the strap, not
+      // the rider. Letting this 121 through anchors the reference and costs the
+      // genuine 147s behind it.
+      const samples = series([147, 45, 121, 119, 147, 146]);
+      expect(flagHeartRateDropouts(samples)).toEqual([true, false, false, false, true, true]);
+    });
+
+    it("does not widen a fall inside the grace window", () => {
+      // A 27 bpm fall two samples on: inside the 25 bpm base allowance only if the
+      // gap buys extra room, which inside the grace window it must not.
+      const samples = series([150, 0, 123]);
+      expect(flagHeartRateDropouts(samples)[2]).toBe(false);
+      expect(flagHeartRateDropouts(samples, { fallGraceSeconds: 0 })[2]).toBe(true);
+    });
+
+    it("stops rejecting a whole clean ride over one early gap", () => {
+      // Program 0: not one sample under 60 bpm, yet the fixed-window check threw away
+      // 58 of its 61 samples once the reference went stale.
+      const program0 = findWorkout(workouts, PROGRAM_0)!;
+      expect(program0.samples.filter((s) => s.heartRateBpm <= 60)).toHaveLength(0);
+      expect(heartRateStats(program0.samples).dropoutCount).toBeLessThan(5);
+      expect(
+        heartRateStats(program0.samples, { driftBpmPerSecond: 0 }).dropoutCount,
+      ).toBeGreaterThan(50);
+    });
+
+    it("leaves the clean ride and the dead strap where they were", () => {
+      // The fix must not buy its wins by loosening the filter generally.
+      expect(heartRateStats(clean.samples).dropoutCount).toBe(0);
+      const rec = findWorkout(workouts, RECUMBENT)!;
+      expect(heartRateStats(rec.samples).dropoutCount).toBe(231);
+      expect(heartRateStats(rec.samples).minBpm).toBeGreaterThan(60);
+    });
+  });
+
   it("survives a strap that died mid-ride", () => {
     const rec = findWorkout(loadCachedWorkouts(storage(PERSIST_BLOB)), RECUMBENT)!;
     const stats = heartRateStats(rec.samples);
