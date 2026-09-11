@@ -125,5 +125,9 @@ export function toWorkout(input: Record<string, unknown>): Workout {
     },
     archived: numOr(raw.archived, 0) !== 0,
     samples,
+    // `input`, not `raw`: the camelized copy has already dropped the distinction
+    // between the two upstream shapes, and a fixture captured through the export
+    // has to come back out in the shape it went in.
+    raw: input,
   };
 }

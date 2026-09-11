@@ -29,16 +29,16 @@ rather than a task belongs in AGENTS.md instead.
 
 ## Data
 
+- [ ] **Export the whole history, not just the open ride.** The per-workout *Export
+      JSON* button covers the ride on screen; `fetchWorkoutHistory` already returns all
+      43 records and there is no way to get them out in one go. Pairs with the
+      cross-ride views below — the same button on a list page would be the natural
+      place for it. See "The export format" in AGENTS.md for the shape a multi-workout
+      file should extend rather than replace.
+
 - [ ] **Programs 0 and 47 are still unidentified.** Ride each once and read the mode
       off the console, then add a row to the training log so the ride can be matched.
       This is a rider task, not a code task. See "Program modes" in AGENTS.md.
-
-- [ ] **Capturing a fixture is painful and should not be.** The 03 Sep record had to be
-      pulled out field by field through the browser console, because Chrome blocks the
-      obvious routes (localhost POST via Private Network Access, then automatic
-      downloads for the origin). An "export this record" affordance in the extension
-      would make it one click, and the project's testing story depends on real captured
-      records.
 
 ## Views
 

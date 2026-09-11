@@ -153,7 +153,10 @@
   color: var(--bar-ink);
   height: 44px;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  /* `minmax(0, ...)` on every track, not the default `minmax(auto, ...)`: all three
+     slots hold nowrap text, whose min-content width is the whole string, so without
+     this the bar cannot shrink and the slots overlap instead. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
   align-items: center;
   gap: 12px;
   padding: 0 14px;
@@ -168,8 +171,38 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.topbar .ident {
+/* The bar's right slot holds two different kinds of thing: a control and a label.
+   They are grouped so the grid still sees one cell, and so the narrow-viewport rule
+   can drop the label while keeping the control — see the media query at the end. */
+.topbar .actions {
   justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+/* The back button's twin without the chevron: text-only, so a page-level action in
+   the site's own header does not read as a second primary button competing with the
+   red ones on the plane below. */
+.baraction {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #ffffff;
+  background: none;
+  border: 0;
+  padding: 6px 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.baraction:hover { background: none; color: var(--machine); }
+.baraction .icon { width: 16px; height: 16px; flex: none; }
+.topbar .ident {
   font-family: var(--alt);
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -479,7 +512,21 @@ footer code { font-family: var(--mono); }
   .clock { grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid var(--plot-rule); padding: 0 0 12px; flex-direction: row; align-items: baseline; gap: 10px; }
   .read .v { font-size: 20px; }
   .band { font-size: 17px; min-height: 48px; }
+  /* The ident is a label and can go; the export action is a control and stays —
+     down to its glyph, which is the last thing to give way. Its accessible name is
+     on the button, so hiding the text costs nothing but the width. */
   .topbar .ident { display: none; }
+  .baraction .label { display: none; }
+  /* The wide bar centres the date on the page, which means the two outer tracks
+     split the leftover space evenly — so the long back label overflows its half and
+     lands on top of the date long before the bar is actually full. Narrow, the
+     controls take the width they need and the date takes what is left, centred in
+     it and ellipsised if it has to be. */
+  .topbar { gap: 8px; grid-template-columns: auto minmax(0, 1fr) auto; }
+  /* Two points off the date buys back the width the ellipsis would otherwise eat.
+     The date is the only figure this bar carries, and a figure is not something a
+     narrow viewport gets to truncate. */
+  .topbar .date { font-size: 13px; }
   .page { padding: 16px 12px 40px; }
   .telemetry, .card, details, .tiles { margin-inline: -12px; }
   .sprints { grid-template-columns: repeat(4, minmax(0, 1fr)); }

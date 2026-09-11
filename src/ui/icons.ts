@@ -23,6 +23,8 @@ const PATHS: Record<string, string[]> = {
   samples: ["M3 12h3l2.5-6 4 12 2.5-6h6"],
   // Stopwatch: the sampling interval.
   interval: ["M12 22a8 8 0 1 0 0-16 8 8 0 0 0 0 16", "M12 10v4", "M9 2h6", "M12 2v4"],
+  // Tray with an arrow into it: take this record away with you.
+  download: ["M12 3v11", "M8 10.5l4 4 4-4", "M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"],
   // Droplet: Sprint 8 sweat score.
   sweat: ["M12 3c3.5 4.2 5.5 6.9 5.5 9.4a5.5 5.5 0 1 1-11 0C6.5 9.9 8.5 7.2 12 3Z"],
 };

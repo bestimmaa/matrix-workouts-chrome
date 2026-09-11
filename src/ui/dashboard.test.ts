@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { toWorkout } from "../parse/workout.js";
 import { flagHeartRateDropouts } from "../parse/heartRate.js";
 import type { Workout } from "../parse/types.js";
 import { renderDashboard } from "./dashboard.js";
+import { exportFilename } from "../export/document.js";
 import { clock, hms, km, modeLabel } from "./format.js";
 
 function fixture(id: string): Workout {
@@ -157,6 +158,103 @@ describe("renderDashboard", () => {
     const text = render("6a6368cb18e8655524dbb05d").querySelector("footer")!.textContent ?? "";
     expect(text).toMatch(/filtered as strap dropouts/);
     expect(text).toMatch(/not derived from the samples/);
+  });
+
+  /*
+   * The platform offers no export, so this button is the only route the record has
+   * out of the browser. It lives in the header's right slot beside the ident, and
+   * it must survive the narrow-viewport rule that hides that ident — a control is
+   * not a label.
+   */
+  describe("export", () => {
+    interface Saved {
+      filename: string;
+      json: string;
+    }
+
+    const saved: Saved[] = [];
+    const BLOB_URL = "blob:stub";
+    let restore: () => void;
+
+    /*
+     * Stand in for the browser's download machinery, which jsdom does not have:
+     * a Blob that remembers its text, an object URL that is just a token, and an
+     * anchor whose click records instead of navigating. This exercises the real
+     * `downloadJson` rather than mocking it out, so the filename and the bytes that
+     * would actually reach disk are what these tests assert on.
+     */
+    beforeEach(() => {
+      saved.length = 0;
+      const url = window.URL as unknown as Record<string, unknown>;
+      const win = window as unknown as Record<string, unknown>;
+      const originals = { create: url["createObjectURL"], revoke: url["revokeObjectURL"], blob: win["Blob"] };
+      const originalClick = window.HTMLAnchorElement.prototype.click;
+
+      let pending = "";
+      class StubBlob {
+        constructor(readonly parts: BlobPart[]) {}
+      }
+      win["Blob"] = StubBlob;
+      url["createObjectURL"] = (blob: StubBlob) => {
+        pending = blob.parts.map(String).join("");
+        return BLOB_URL;
+      };
+      url["revokeObjectURL"] = () => {};
+      window.HTMLAnchorElement.prototype.click = function click(this: HTMLAnchorElement) {
+        if (this.getAttribute("href") !== BLOB_URL) return originalClick.call(this);
+        saved.push({ filename: this.getAttribute("download") ?? "", json: pending });
+      };
+
+      restore = () => {
+        url["createObjectURL"] = originals.create;
+        url["revokeObjectURL"] = originals.revoke;
+        win["Blob"] = originals.blob;
+        window.HTMLAnchorElement.prototype.click = originalClick;
+      };
+    });
+
+    // `downloadJson` revokes on the next task, so the stubs have to outlive this
+    // tick — restoring under them leaves the timer calling into a jsdom method that
+    // does not exist.
+    afterEach(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      restore();
+    });
+
+    function exportControl(root: HTMLElement): HTMLButtonElement {
+      return root.querySelector<HTMLButtonElement>(".topbar .actions button")!;
+    }
+
+    it("offers the export from the header, and says where the file goes", () => {
+      const root = render("6aa045668d2b6d09c612785d");
+      const button = exportControl(root);
+      expect(button.textContent).toContain("Export JSON");
+      // An export button is where a user starts to wonder about uploads. Answer first.
+      expect(button.getAttribute("title")).toMatch(/nothing is uploaded/i);
+      // The back button keeps the first tab stop; leaving is the control people hunt for.
+      expect(root.querySelector("button")).not.toBe(button);
+    });
+
+    it("writes the whole record, telemetry included, under a dated filename", () => {
+      const workout = fixture("6a95b033c23a154beb856bce");
+      const root = renderDashboard(workout, { onShowStock: () => {} });
+
+      exportControl(root).click();
+      expect(saved).toHaveLength(1);
+      expect(saved[0]!.filename).toBe(exportFilename(workout));
+
+      const doc = JSON.parse(saved[0]!.json);
+      expect(doc.workout.id).toBe(workout.id);
+      expect(doc.workout.samples).toHaveLength(workout.samples.length);
+      expect(doc.workout.samples[0]).toHaveProperty("powerWatts");
+      expect(doc.source.record).toBeTruthy();
+    });
+
+    it("confirms for itself, because the browser's own bubble may not be visible", () => {
+      const button = exportControl(render("6aa045668d2b6d09c612785d"));
+      button.click();
+      expect(button.textContent).toContain("Saved");
+    });
   });
 
   it("hands back a way to the stock page", () => {

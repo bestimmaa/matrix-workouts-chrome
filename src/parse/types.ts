@@ -104,6 +104,14 @@ export interface Workout {
   };
   archived: boolean;
   samples: Sample[];
+  /**
+   * The record exactly as it arrived, untouched: camelCase from localStorage,
+   * snake_case from the API. Kept so an export can be lossless — the upstream
+   * shape is undocumented and carries fields this model does not name, and
+   * dropping them silently would make the exported file a worse record of the
+   * ride than the one the browser already had.
+   */
+  raw: Record<string, unknown>;
 }
 
 /** Every parse failure surfaces as this, with a message safe to show a user. */

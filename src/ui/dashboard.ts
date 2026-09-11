@@ -5,6 +5,8 @@ import { niceDomain, type LinearScale } from "../charts/scale.js";
 import { planWorkout } from "../charts/plan.js";
 import { heartRateStats } from "../parse/heartRate.js";
 import type { Workout } from "../parse/types.js";
+import { exportFilename, workoutExportJson } from "../export/document.js";
+import { downloadJson } from "./download.js";
 import { clock, hms, km, longDate, machineLabel, modeLabel } from "./format.js";
 import { icon } from "./icons.js";
 import { el, svg } from "./svg.js";
@@ -48,7 +50,8 @@ export function renderDashboard(workout: Workout, options: DashboardOptions): HT
 /**
  * The stock detail page's black header, slot for slot: a back control on the left,
  * the date in the middle, and the spacer on the right — which is where we sign the
- * view, since the user needs to know whose page this is.
+ * view, since the user needs to know whose page this is, and where the export
+ * action sits, because it acts on the whole page rather than on any one panel.
  *
  * The back button stays first in the DOM. It is the control a user reaches for to
  * get out, and tab order should hand it to them before four charts' worth of
@@ -60,8 +63,59 @@ function topBar(workout: Workout, options: DashboardOptions): HTMLElement {
   return el("div", { class: "topbar" }, [
     stock,
     el("div", { class: "date", text: longDate(workout.startedAt) }),
-    el("div", { class: "ident", text: "Full Matrix Workouts" }),
+    el("div", { class: "actions" }, [
+      exportButton(workout),
+      el("div", { class: "ident", text: "Full Matrix Workouts" }),
+    ]),
   ]);
+}
+
+/**
+ * Take the ride somewhere else.
+ *
+ * The platform offers no export of any kind, so this record is otherwise reachable
+ * only by reading it out of `localStorage` by hand — which is exactly how this
+ * project's own fixtures were captured, painfully, one field at a time.
+ *
+ * The download is the browser's, not ours: no upload, no service, nothing crosses
+ * the network. That is the same promise the footer makes about the rest of this
+ * view, and an export button is precisely where a user would reasonably start to
+ * doubt it — so the button says where the file goes before they press it.
+ */
+function exportButton(workout: Workout): HTMLButtonElement {
+  const label = el("span", { class: "label", text: "Export JSON" });
+  const button = el("button", {
+    type: "button",
+    class: "baraction",
+    title:
+      `Download this workout's full record, telemetry included, as ` +
+      `${exportFilename(workout)}. Saved by your browser; nothing is uploaded.`,
+  }, [icon("download"), label]);
+
+  // The visible label is hidden on a narrow viewport, where there is no room for it
+  // beside the date — so the accessible name lives on the button rather than in the
+  // text, and moves with it. The glyph is `aria-hidden` and cannot name anything.
+  const say = (visible: string, spoken: string) => {
+    label.textContent = visible;
+    button.setAttribute("aria-label", spoken);
+  };
+  say("Export JSON", "Export this workout as JSON");
+
+  button.addEventListener("click", () => {
+    try {
+      downloadJson(exportFilename(workout), workoutExportJson(workout));
+      // Chrome's own download bubble can be dismissed or off-screen, so the button
+      // confirms for itself; a click that produced nothing visible reads as broken.
+      say("Saved", "Export saved");
+    } catch {
+      // Deliberately without the error: it can quote what was being written, and
+      // that is the user's heart rate. The button says enough.
+      say("Export failed", "Export failed");
+    }
+    setTimeout(() => say("Export JSON", "Export this workout as JSON"), 2500);
+  });
+
+  return button;
 }
 
 /**

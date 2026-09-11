@@ -58,6 +58,10 @@ Also built: the HTTP API client (`src/api/`) and the service worker that carries
 one request, so a workout outside the cached week can be fetched on demand — the
 detail view offers a **Load full history** button instead of an error.
 
+Also built: **JSON export** (`src/export/`). The view's header carries an *Export
+JSON* button that writes the whole record — normalized telemetry plus the upstream
+record verbatim — to a file. See "The export format" below.
+
 Not built: anything that uses history in aggregate (trends across rides, a power
 curve, sprint-to-sprint comparison). The client returns the whole list; only the one
 requested workout is currently rendered from it.
@@ -172,6 +176,13 @@ keys. The API also carries four fields the cache does not: `program_id`,
 | `intervals` | the sample array — see below |
 | `wattsKg`, `functionThresholdPower`, `peakRpm`, `averageRpm`, `peakSpm`, `totalStrokes` | often `0`; several are machine-type specific |
 | `totalSweatScore`, `sprintScores`, `sprint8ProgramLevel` | **Sprint 8 rides only** — see Program modes |
+
+`toWorkout` keeps the record it was handed on `Workout.raw`, untouched and in
+whichever of the two shapes it arrived in. That field exists for the export and for
+nothing else: the upstream shape is undocumented and carries fields this model does
+not name, so a normalized-only export would get quietly worse every time the
+platform adds one. Do not read `raw` to dodge the normalized model — that is what
+`camelizeWorkout` is for.
 
 ### Interval sample (one per 10 s)
 
@@ -345,6 +356,7 @@ src/
   charts/      SVG chart modules (pure: data + scale -> SVG element)
   ui/          layout, readout console, stat tiles, icons, table view
   api/         jfit HTTP client (credentials + history backfill), pure and DOM-free
+  export/      the JSON a user takes elsewhere (pure: Workout -> document)
   background/  MV3 service worker: carries the one cross-origin request
 fixtures/      real captured workout records — see below
 ```
@@ -356,10 +368,10 @@ Decisions taken up front (revisit deliberately, don't drift):
   the point is to replace the limited dashboard, not sit next to it. *In place*, but
   **only when asked**: see the default-collapsed rule below.
 - **Hand-authored SVG charts, no runtime charting library.** See below.
-- **Zero runtime dependencies.** The whole bundle is 27 kB / 9.8 kB gzipped, ships
+- **Zero runtime dependencies.** The whole bundle is 38 kB / 13 kB gzipped, ships
   as one IIFE, and makes no network request of any kind.
-- **`parse/` and `charts/` stay pure and DOM-free** so they are unit-testable
-  against fixtures without a browser. Concretely: `charts/` emits *geometry* —
+- **`parse/`, `charts/` and `export/` stay pure and DOM-free** so they are
+  unit-testable against fixtures without a browser. Concretely: `charts/` emits *geometry* —
   path `d` strings, tick positions, scales — and `ui/` turns that into elements.
   Nothing under `charts/` may touch `document`.
 - The site is a React SPA: routes change **without a page load**. The content
@@ -482,6 +494,77 @@ id — it had been sitting in an eyebrow nobody thought of as data. It now lives
 the footer's provenance line, where a narrow viewport cannot collapse it away, and
 `dashboard.test.ts` asserts every summary figure is still on the page. Add to that
 assertion rather than trusting a careful eye.
+
+---
+
+## The export format
+
+The platform offers no export of any kind. The record is otherwise reachable only by
+reading `localStorage` by hand in the devtools console — which is exactly how this
+repo's fixtures were captured, one field at a time, and the reason an export was on
+the TODO list before it was a feature.
+
+`src/export/document.ts` builds the file; `src/ui/download.ts` hands it to the
+browser. The builder is pure and DOM-free for the same reason `parse/` and `charts/`
+are: what leaves this extension is worth asserting against every fixture, and a test
+should not need a browser to do it.
+
+```
+{
+  format: "full-matrix-workouts/workout",
+  formatVersion: 1,
+  exportedAt: <ISO 8601 UTC>,
+  workout: {
+    ...the normalized model, units in the names,
+    derived: { heartRate: {...stats, filter}, control: <controlSignature> },
+    samples: [ ...Sample, heartRateValid ]
+  },
+  source: { shape: "camelCase" | "snake_case", record: <the upstream record, verbatim> }
+}
+```
+
+Four decisions in it, none of them arbitrary:
+
+- **`source.record` is the upstream record byte for byte**, which is what makes the
+  export lossless. The upstream shape is undocumented and can change without notice;
+  an export of only the normalized model would silently become the smaller of the two
+  records the first time the platform adds a field. It also means **capturing a
+  fixture is now one click and one command**:
+
+  ```
+  jq '.source.record' matrix-workout-2026-09-03-<id>.json > fixtures/raw-<id>.json
+  ```
+
+  Verbatim includes the key style, so an API-shaped record comes back out
+  `snake_case` — which is what `raw-6a998daf…` is and what a test asserts it stays.
+- **Dropouts are flagged, not scrubbed.** Every sample carries `heartRateValid`, and
+  `heartRateBpm` still holds whatever the console recorded. Filtering is the
+  consumer's decision, and an export that hid the bad readings would be a worse
+  account of the ride than the record it came from. `derived.heartRate.filter`
+  states in the file itself what the flag means — the same "label the filter" rule
+  the charts follow.
+- **Both heart-rate summaries travel.** `reported` is the platform's and `derived` is
+  ours, side by side, because they disagree and on a badly glitching strap the
+  platform's is the better of the two. Picking one for the reader is not this file's
+  job.
+- **`programType` rides along with `mode`.** The raw console id is always present
+  even where we have no name for it; `mode` is `"unknown"` rather than a guess.
+
+`formatVersion` is for breaking changes only — adding an optional field does not
+need one.
+
+The filename is `matrix-workout-<YYYY-MM-DD>-<workoutId>.json`, dated from
+`workoutTime` in **UTC** rather than a localized rendering, so two machines exporting
+the same ride agree on the name.
+
+**The download needs no new permission and that is deliberate.** It is a blob URL on
+a detached `<a download>` — never inserted, so the site's DOM stays untouched.
+`chrome.downloads` would mean adding `"downloads"` to a manifest whose permission
+list is deliberately the shortest it can be. Chrome may show its own "allow multiple
+downloads" prompt for the origin; that is the browser asking the user, which is the
+right place for the question. The button confirms for itself on success, because
+Chrome's download bubble can be dismissed or off-screen and a click that produces
+nothing visible reads as broken.
 
 ---
 
@@ -617,6 +700,10 @@ This handles personal health data.
   must not be added.
 - No remote code. MV3 forbids it and so do we.
 - Anything written to `chrome.storage` must be user-visible and clearable.
+- **The JSON export is a local download and must stay one.** No upload, no service,
+  no "share" anything. The button's tooltip says so before it is pressed, and a
+  failure path must never report an error string that could quote the record it was
+  writing — that string is the user's heart rate.
 
 ---
 
@@ -671,6 +758,13 @@ assert the conventions directly: no `NaN` in any emitted path, one palette slot 
 panel, a step path for resistance and a line path for power, every non-zero baseline
 labelled, and dropouts nulled rather than zeroed. **Add the assertion when you add
 the rule** — a convention nothing checks is a convention that drifts.
+
+Export tests (`src/export/export.test.ts`) run the document builder against every
+fixture and assert the format's promises directly: power, resistance and cadence on
+every sample of every ride; sample times taken from the parse layer rather than
+recomputed as `index * 10`; dropouts flagged without the console's reading being
+erased; both heart-rate summaries present; and `source.record` equal to the fixture
+it came from, in the shape it came in. Add the assertion when you add the rule.
 
 View tests (`src/ui/dashboard.test.ts`) run under `// @vitest-environment jsdom` and
 cover the DOM: accessible labels, arrow-key scrubbing, the dropout readout, the
