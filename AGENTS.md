@@ -177,6 +177,15 @@ keys. The API also carries four fields the cache does not: `program_id`,
 | `wattsKg`, `functionThresholdPower`, `peakRpm`, `averageRpm`, `peakSpm`, `totalStrokes` | often `0`; several are machine-type specific |
 | `totalSweatScore`, `sprintScores`, `sprint8ProgramLevel` | **Sprint 8 rides only** — see Program modes |
 
+Two fields sit outside that table and are easy to lose: **`id`, which duplicates
+`workoutId`, and `modelId`, the machine *model* (`5bcf75c1…` for both bikes seen) —
+which is not `machineId`, the UUID of the individual physical unit.** They are called
+out here because the first real export caught two fixtures missing both: `raw-6aa04566…`
+and `raw-6aa194a0…` were the two captured by hand through the devtools console, and
+hand-capture enumerates a field list and drops whatever is not on it. That is the
+losslessness argument for `source.record`, demonstrated rather than asserted. Both
+fixtures have since been patched from exports.
+
 `toWorkout` keeps the record it was handed on `Workout.raw`, untouched and in
 whichever of the two shapes it arrived in. That field exists for the export and for
 nothing else: the upstream shape is undocumented and carries fields this model does
@@ -525,18 +534,26 @@ should not need a browser to do it.
 
 Four decisions in it, none of them arbitrary:
 
-- **`source.record` is the upstream record byte for byte**, which is what makes the
-  export lossless. The upstream shape is undocumented and can change without notice;
-  an export of only the normalized model would silently become the smaller of the two
-  records the first time the platform adds a field. It also means **capturing a
-  fixture is now one click and one command**:
+- **`source.record` carries every field of the upstream record, unaltered**, which is
+  what makes the export lossless. The upstream shape is undocumented and can change
+  without notice; an export of only the normalized model would silently become the
+  smaller of the two records the first time the platform adds a field. It also means
+  **capturing a fixture is now one click and one command**:
 
   ```
   jq '.source.record' matrix-workout-2026-09-03-<id>.json > fixtures/raw-<id>.json
   ```
 
-  Verbatim includes the key style, so an API-shaped record comes back out
+  Unaltered includes the key style, so an API-shaped record comes back out
   `snake_case` — which is what `raw-6a998daf…` is and what a test asserts it stays.
+
+  **It is not byte-for-byte, and do not claim that it is.** The record goes through
+  `JSON.stringify` on the way out, which normalizes number *formatting* — a `28.0`
+  on the wire comes back as `28` — and does not promise the key order the server
+  sent. Both are the same JSON to every parser, so nothing downstream can tell; it
+  matters only if you are diffing an export against a fixture, where it shows up as
+  noise that is not a difference in the data. When patching an existing fixture,
+  splice in what is missing rather than rewriting the file from an export.
 - **Dropouts are flagged, not scrubbed.** Every sample carries `heartRateValid`, and
   `heartRateBpm` still holds whatever the console recorded. Filtering is the
   consumer's decision, and an export that hid the bad readings would be a worse

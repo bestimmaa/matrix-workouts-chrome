@@ -1,5 +1,7 @@
 {
  "workoutId": "6aa045668d2b6d09c612785d",
+ "id": "6aa045668d2b6d09c612785d",
+ "modelId": "5bcf75c16a6ffe5719a3a52d",
  "workoutSource": "connected",
  "exerciseTitle": "upright_bike",
  "workoutType": "cardio",

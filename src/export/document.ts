@@ -15,10 +15,12 @@ import type { Sample, Workout } from "../parse/types.js";
  *  - **Not a summary.** The whole argument for this project is that the platform's
  *    six tiles throw away power, resistance and cadence. An export that shipped
  *    only what the tiles show would repeat the mistake.
- *  - **Not lossy.** `source.record` is the upstream record byte for byte, so a
- *    field this model has never heard of still arrives at the other end. The
- *    upstream shape is undocumented and can change without notice; a normalized-only
- *    export would quietly become the smaller of the two records over time.
+ *  - **Not lossy.** `source.record` carries every field of the upstream record
+ *    unaltered, so a field this model has never heard of still arrives at the other
+ *    end. The upstream shape is undocumented and can change without notice; a
+ *    normalized-only export would quietly become the smaller of the two records over
+ *    time. (Unaltered, not byte-for-byte: `JSON.stringify` renders a `28.0` as `28`
+ *    and does not promise the server's key order. Same JSON, different bytes.)
  *  - **Not a re-interpretation.** Where the platform's reported figures disagree
  *    with the series — which they do, see AGENTS.md — both are carried, labelled,
  *    rather than one being picked on the reader's behalf.
@@ -80,8 +82,8 @@ export interface WorkoutExport {
     /** Where the record came from, and therefore which key style it uses. */
     shape: "camelCase" | "snake_case";
     /**
-     * The upstream record, untouched. Extracting this alone gives you a fixture in
-     * the shape `fixtures/raw-<id>.json` expects.
+     * The upstream record, every field unaltered. Extracting this alone gives you a
+     * fixture in the shape `fixtures/raw-<id>.json` expects.
      */
     record: Record<string, unknown>;
   };
