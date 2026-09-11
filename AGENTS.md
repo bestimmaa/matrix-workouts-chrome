@@ -66,10 +66,14 @@ Not built: anything that uses history in aggregate (trends across rides, a power
 curve, sprint-to-sprint comparison). The client returns the whole list; only the one
 requested workout is currently rendered from it.
 
-**Scope: the indoor bike only.** Both bike types (upright and recumbent) are
-covered by fixtures and are what this is designed and verified against. Treadmill
-and rower are explicitly *not* a goal right now — do not build for them, and do not
-go capturing fixtures for them. The parse layer stays machine-agnostic because that
+**Scope: the indoor bike only, and this is now enforced rather than merely
+intended.** Both bike types (upright and recumbent) are covered by fixtures and are
+what this is designed and verified against. Treadmill and rower are explicitly *not*
+a goal right now — do not build for them, and do not go capturing fixtures for them.
+`src/parse/machine.ts` holds the list and `src/content/main.ts` acts on it: a
+treadmill or rower ride gets no pill and no takeover, and the toolbar icon explains
+itself there instead of drawing panels about channels the machine may not report.
+See "Deciding what to take over" below. The parse layer stays machine-agnostic because that
 costs nothing and the upstream shape is shared, and `src/charts/plan.ts` keeps its
 speed/incline fallbacks (guarded, tested as inert on bikes) so a non-bike record
 degrades into something readable rather than an exception. Neither is a promise
@@ -176,6 +180,16 @@ keys. The API also carries four fields the cache does not: `program_id`,
 | `intervals` | the sample array — see below |
 | `wattsKg`, `functionThresholdPower`, `peakRpm`, `averageRpm`, `peakSpm`, `totalStrokes` | often `0`; several are machine-type specific |
 | `totalSweatScore`, `sprintScores`, `sprint8ProgramLevel` | **Sprint 8 rides only** — see Program modes |
+
+**The upstream shape has changed at least once, and the fixtures straddle it.**
+Read live on 11 Sep 2026, the cached records carry `id` and no longer carry
+`programLevel` or `sprint8ProgramLevel` — including a Sprint 8 ride from 10 Sep, which
+has `sprintScores` and `totalSweatScore` but neither level field. Six older fixtures
+still carry `programLevel`. Nothing breaks: `toSprint8` reads
+`sprint8ProgramLevel ?? programLevel`, both absent gives `null`, and the sprint
+caption drops its `· level N` clause. Treat it as the standing warning that this
+shape moves without notice, which is the entire reason the export carries
+`source.record`.
 
 Two fields sit outside that table and are easy to lose: **`id`, which duplicates
 `workoutId`, and `modelId`, the machine *model* (`5bcf75c1…` for both bikes seen) —
@@ -432,6 +446,38 @@ Decisions taken up front (revisit deliberately, don't drift):
   anywhere else (the jsdom preview) the stack falls through to the same
   `Rajdhani, "Helvetica Neue", Arial` the app itself declares. Naming a family costs
   no request; fetching one is what the rule forbids.
+
+---
+
+## Deciding what to take over
+
+The project's scope has always been the indoor bike. Until this was written, that was
+a statement about what the code had been *tested* against, not about what it would
+*render* — a treadmill ride would have got a dashboard leading with power, resistance
+and cadence, three channels that machine may not report at all.
+
+`isSupportedMachine` in `src/parse/machine.ts` is the whole rule, and there are three
+decisions inside it worth keeping:
+
+- **Both bike types, not just the upright one.** The obvious narrowing is wrong: this
+  account contains a recumbent ride (24 Jul, `raw-6a6368cb…`), it is a committed
+  fixture, and it renders correctly. A test asserts every fixture in the repo stays
+  in scope, so narrowing the list fails the suite with the reason attached.
+- **`"unknown"` passes.** That is `toWorkout`'s own sentinel for a record carrying no
+  `machineType` at all, which is *not knowing* rather than knowing it is out of
+  scope. The parse layer's standing rule is tolerance of an undocumented upstream
+  shape, and a record missing one field still has a full interval series worth
+  drawing.
+- **`null` from `cachedMachineType` is "cannot tell", and never grounds for hiding.**
+  The cache holds about a week; most of the history is outside it. Removing the pill
+  because a ride is old would strand the user on the stock page's own error for
+  exactly the rides this extension exists to rescue. So the pill stays whenever the
+  type is unreadable, and the check runs again in `renderWorkout` once the record is
+  actually in hand — which is also where a ride fetched from the API gets caught.
+
+`cachedMachineType` deliberately does not go through `toWorkout`: it reads one key off
+the raw record rather than mapping every interval into a `Sample`. The expensive half
+of parsing stays where the design put it — on open, not on navigation.
 
 ---
 

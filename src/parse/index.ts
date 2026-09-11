@@ -1,6 +1,7 @@
 export * from "./types.js";
 export * from "./program.js";
 export * from "./persist.js";
+export * from "./machine.js";
 export * from "./workout.js";
 export * from "./heartRate.js";
 export * from "./controlSignature.js";

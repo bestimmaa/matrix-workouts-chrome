@@ -9,8 +9,10 @@ import {
   camelizeWorkout,
   extractRawWorkouts,
   findWorkout,
+  cachedMachineType,
   flagHeartRateDropouts,
   heartRateStats,
+  isSupportedMachine,
   loadCachedWorkouts,
   controlSignature,
   programMode,
@@ -484,5 +486,80 @@ describe("heart rate quality", () => {
     expect(Math.round(stats.meanBpm!)).not.toBe(142);
     expect(dropouts.reported.minHeartRateBpm).toBe(87);
     expect(stats.minBpm).not.toBe(87);
+  });
+});
+
+describe("machine scope", () => {
+  it("renders both bike types, because the account contains both", () => {
+    expect(isSupportedMachine("upright_bike")).toBe(true);
+    expect(isSupportedMachine("recumbent_bike")).toBe(true);
+  });
+
+  it("declines the machines this project has never seen a record from", () => {
+    expect(isSupportedMachine("treadmill")).toBe(false);
+    expect(isSupportedMachine("rower")).toBe(false);
+    expect(isSupportedMachine("elliptical")).toBe(false);
+  });
+
+  /*
+   * "unknown" is toWorkout's sentinel for a record with no machineType at all. That
+   * is not knowing, not knowing it is out of scope — and the parse layer's standing
+   * rule is to stay tolerant of an upstream shape that can change without notice.
+   */
+  it("still renders a record that carries no machine type", () => {
+    expect(isSupportedMachine("unknown")).toBe(true);
+    expect(toWorkout({ workoutId: "x", workoutTime: "2026-01-01T00:00:00Z" }).machineType).toBe(
+      "unknown",
+    );
+  });
+
+  /*
+   * Every fixture must stay renderable. If this fails, either a fixture arrived from
+   * a machine this project does not cover, or the scope list lost an entry that real
+   * captured rides depend on.
+   */
+  it("covers every fixture in the repo", () => {
+    for (const workout of loadCachedWorkouts(storage(PERSIST_BLOB))) {
+      expect(isSupportedMachine(workout.machineType)).toBe(true);
+    }
+    expect(isSupportedMachine(toWorkout(JSON.parse(fixture(`raw-${RECUMBENT}.json`))).machineType)).toBe(
+      true,
+    );
+  });
+
+  describe("cachedMachineType", () => {
+    it("reads the type without parsing the samples", () => {
+      expect(cachedMachineType(PERSIST_BLOB, TARGET_HR_CLEAN)).toBe("upright_bike");
+      expect(cachedMachineType(PERSIST_BLOB, RECUMBENT)).toBe("recumbent_bike");
+    });
+
+    /*
+     * Null means "cannot tell", and the caller must not hide anything on it. Most of
+     * the user's history is outside the cached week, so treating absence as grounds
+     * to remove the pill would strand them on the stock page's own error.
+     */
+    it("says it cannot tell rather than guessing", () => {
+      expect(cachedMachineType(PERSIST_BLOB, "not-a-workout-id")).toBeNull();
+      expect(cachedMachineType(null, TARGET_HR_CLEAN)).toBeNull();
+      expect(cachedMachineType("{ not json", TARGET_HR_CLEAN)).toBeNull();
+      expect(cachedMachineType('{"userStore":"{}"}', TARGET_HR_CLEAN)).toBeNull();
+    });
+
+    it("cannot tell when the record carries no machine type", () => {
+      const blob = JSON.stringify({
+        userStore: JSON.stringify({ workouts: [{ workoutId: "bare" }] }),
+      });
+      expect(cachedMachineType(blob, "bare")).toBeNull();
+    });
+
+    it("reads the API's snake_case spelling too", () => {
+      const blob = JSON.stringify({
+        userStore: JSON.stringify({
+          workouts: [{ workout_id: "snake", machine_type: "treadmill" }],
+        }),
+      });
+      expect(cachedMachineType(blob, "snake")).toBe("treadmill");
+      expect(isSupportedMachine(cachedMachineType(blob, "snake")!)).toBe(false);
+    });
   });
 });

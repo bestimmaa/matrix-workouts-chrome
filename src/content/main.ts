@@ -1,7 +1,14 @@
-import { findWorkout, loadCachedWorkouts } from "../parse/index.js";
+import {
+  cachedMachineType,
+  findWorkout,
+  isSupportedMachine,
+  loadCachedWorkouts,
+  PERSIST_KEY,
+} from "../parse/index.js";
 import { WorkoutParseError, type Workout } from "../parse/types.js";
 import { ApiError } from "../api/client.js";
 import { renderDashboard } from "../ui/dashboard.js";
+import { machineLabel } from "../ui/format.js";
 import { el } from "../ui/svg.js";
 import { loadHistory } from "./history.js";
 import { createSurface, type Surface } from "./mount.js";
@@ -74,6 +81,27 @@ function problem(title: string, message: string, action?: HTMLElement): HTMLElem
   ]);
 }
 
+/**
+ * A ride on something this extension is not built for.
+ *
+ * Reached two ways: the toolbar icon, which works anywhere and so can land here, and
+ * a workout that only turned out to be out of scope after the history fetch. The
+ * pill route is already closed off in `renderRoute`.
+ */
+function outOfScope(view: Surface, machineType: string): void {
+  view.render(
+    problem(
+      `${machineLabel(machineType)} is outside this extension's scope`,
+      "This view is built for the indoor bike: it leads with power, resistance and " +
+        "cadence, which is telemetry the platform records and never shows you. A " +
+        `${machineLabel(machineType).toLowerCase()} fills in different fields, so the ` +
+        "same panels would be confident about channels this ride may not carry at all. " +
+        "The stock page is the honest one here, and it is the one you have.",
+    ),
+  );
+  renderedId = null;
+}
+
 /** The workout is not in this browser's cache; offer to go and get it. */
 function offerHistory(view: Surface, id: string): void {
   const button = el("button", { type: "button", text: "Load full history" });
@@ -87,6 +115,7 @@ function offerHistory(view: Surface, id: string): void {
         history = result.workouts;
         const workout = findWorkout(history, id);
         if (workout) {
+          if (!isSupportedMachine(workout.machineType)) return outOfScope(view, workout.machineType);
           view.render(renderDashboard(workout, { onShowStock: showStock }));
           renderedId = id;
           return;
@@ -130,7 +159,9 @@ function renderWorkout(view: Surface, id: string): void {
     const workout =
       findWorkout(loadCachedWorkouts(localStorage), id) ?? (history ? findWorkout(history, id) : null);
 
-    if (workout) {
+    if (workout && !isSupportedMachine(workout.machineType)) {
+      outOfScope(view, workout.machineType);
+    } else if (workout) {
       view.render(renderDashboard(workout, { onShowStock: showStock }));
       renderedId = id;
     } else {
@@ -188,6 +219,19 @@ function renderRoute(pathname: string): void {
   if (id === null) {
     // Off the workout route entirely: remove ourselves completely rather than
     // leaving a pill floating over a page this extension does not handle.
+    surface?.destroy();
+    surface = null;
+    renderedId = null;
+    return;
+  }
+
+  // A ride on something that is not an indoor bike gets no pill, for the same reason
+  // being off the workout route gets none: the pill must never float over a page this
+  // extension does not handle. `null` means we cannot tell — the workout is outside
+  // the cached week — and we do not hide on a guess, so the pill stays and the check
+  // runs again once the record is actually in hand.
+  const machineType = cachedMachineType(localStorage.getItem(PERSIST_KEY), id);
+  if (machineType !== null && !isSupportedMachine(machineType)) {
     surface?.destroy();
     surface = null;
     renderedId = null;
