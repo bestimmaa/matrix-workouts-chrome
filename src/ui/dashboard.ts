@@ -5,7 +5,8 @@ import { niceDomain, type LinearScale } from "../charts/scale.js";
 import { planWorkout } from "../charts/plan.js";
 import { heartRateStats } from "../parse/heartRate.js";
 import type { Workout } from "../parse/types.js";
-import { clock, km, longDate, machineLabel, modeLabel } from "./format.js";
+import { clock, hms, km, longDate, machineLabel, modeLabel } from "./format.js";
+import { icon } from "./icons.js";
 import { el, svg } from "./svg.js";
 
 export interface DashboardOptions {
@@ -20,74 +21,107 @@ export function renderDashboard(workout: Workout, options: DashboardOptions): HT
   const panels = plan.panels.map((spec) => buildPanel(spec, x, plan.elapsedSeconds));
   const hr = heartRateStats(workout.samples);
 
-  const wrap = el("div", { class: "wrap" });
-
-  wrap.append(
-    topBar(workout, options),
-    header(workout, plan.headlineReason),
+  // Chrome first, then the page body — the same three bands the stock detail page
+  // stacks: black header, cardio title, content plane.
+  const page = el("div", { class: "page" }, [
+    lede(plan.headlineReason),
+    tiles(workout),
     ...(panels.length ? [] : [emptyState()]),
-  );
+  ]);
 
   if (panels.length) {
     const readouts = new Map<string, HTMLElement>();
     const consoleRow = readoutConsole(panels, readouts, workout.durationSeconds);
     const stack = panelStack(panels, x, plan.elapsedSeconds, readouts, consoleRow);
-    wrap.append(consoleRow.root, stack);
+    page.append(el("section", { class: "telemetry" }, [consoleRow.root, stack]));
   }
 
-  if (workout.sprint8) wrap.append(sprintSection(workout.sprint8));
-  if (panels.length) wrap.append(tableSection(workout, panels));
-  wrap.append(footer(workout, plan.control, hr));
+  if (workout.sprint8) page.append(sprintSection(workout.sprint8));
+  if (panels.length) page.append(tableSection(workout, panels));
+  page.append(footer(workout, plan.control, hr));
 
-  return wrap;
+  return el("div", { class: "wrap" }, [topBar(workout, options), band(workout), page]);
 }
 
 /* ---------------------------------------------------------------- top bar */
 
+/**
+ * The stock detail page's black header, slot for slot: a back control on the left,
+ * the date in the middle, and the spacer on the right — which is where we sign the
+ * view, since the user needs to know whose page this is.
+ *
+ * The back button stays first in the DOM. It is the control a user reaches for to
+ * get out, and tab order should hand it to them before four charts' worth of
+ * scrubbing.
+ */
 function topBar(workout: Workout, options: DashboardOptions): HTMLElement {
-  const stock = el("button", { type: "button", text: "Show stock page" });
+  const stock = el("button", { type: "button", class: "back", text: "Show stock page" });
   stock.addEventListener("click", options.onShowStock);
-  return el("div", { class: "bar" }, [
-    el("span", { class: "eyebrow", text: "Full Matrix Workouts" }),
-    el("span", { class: "spacer" }),
-    el("span", { class: "eyebrow", text: workout.id }),
+  return el("div", { class: "topbar" }, [
     stock,
+    el("div", { class: "date", text: longDate(workout.startedAt) }),
+    el("div", { class: "ident", text: "Full Matrix Workouts" }),
   ]);
 }
 
-/* ----------------------------------------------------------------- header */
+/**
+ * The cardio band. The site colours this strip by workout type — `#ffa400` for
+ * cardio, red for strength, teal for anything else — and puts the exercise title
+ * in it; on a bike it reads `UPRIGHT_BIKE` and nothing more. Ours carries the mode
+ * as well, because which program the console was running is the thing that decides
+ * what the panels below say.
+ */
+function band(workout: Workout): HTMLElement {
+  return el("h1", {
+    class: "band",
+    text: `${machineLabel(workout.machineType)} · ${modeLabel(workout.mode, workout.programType)}`,
+  });
+}
 
-function header(workout: Workout, reason: string): HTMLElement {
-  const samples = workout.samples.length;
-  return el("header", {}, [
-    el("div", {
-      class: "eyebrow",
-      text: `${machineLabel(workout.machineType)} · ${longDate(workout.startedAt)}`,
-    }),
-    el("h1", { text: `${modeLabel(workout.mode, workout.programType)} telemetry` }),
-    el("p", {
-      class: "lede",
-      text:
-        `Every channel the console recorded at 10-second resolution, on one shared clock. ` +
-        `Panels are ordered by what the console was holding: ${reason}.`,
-    }),
-    el("div", { class: "meta" }, [
-      metaItem("Duration", clock(workout.durationSeconds)),
-      metaItem("Distance", `${km(workout.distanceMeters)} km`),
-      ...(workout.calories !== null ? [metaItem("Calories", `${workout.calories} kcal`)] : []),
-      metaItem("Samples", String(samples)),
-      metaItem("Interval", "10 s"),
-    ]),
+function lede(reason: string): HTMLElement {
+  return el("p", {
+    class: "lede",
+    text:
+      `Every channel the console recorded at 10-second resolution, on one shared clock. ` +
+      `Panels are ordered by what the console was holding: ${reason}.`,
+  });
+}
+
+/* ------------------------------------------------------------ stat tiles */
+
+/**
+ * The summary figures, in the site's own metric idiom: a small label in its
+ * secondary face, then an icon, the value, and the unit shrunk beside it.
+ */
+function tiles(workout: Workout): HTMLElement {
+  return el("div", { class: "tiles" }, [
+    tile("duration", "Duration", hms(workout.durationSeconds)),
+    tile("distance", "Distance", [[km(workout.distanceMeters), "km"]]),
+    ...(workout.calories !== null
+      ? [tile("calories", "Calories", [[String(workout.calories), "kcal"]])]
+      : []),
+    tile("samples", "Samples", [[String(workout.samples.length), "recorded"]]),
+    tile("interval", "Interval", [["10", "s"]]),
   ]);
 }
 
-function metaItem(key: string, value: string): HTMLElement {
-  return el("span", {}, [`${key} `, el("b", { text: value })]);
+/** One tile. `parts` is value/unit pairs, so `45 m 10 s` is one figure, not two. */
+function tile(
+  glyph: string,
+  label: string,
+  parts: readonly (readonly [string, string])[],
+): HTMLElement {
+  const value = el("span", { class: "v" }, [icon(glyph)]);
+  for (const [amount, unit] of parts) {
+    value.append(amount, el("small", { text: unit }));
+  }
+  return el("div", { class: "tile" }, [el("span", { class: "k", text: label }), value]);
 }
 
 function emptyState(): HTMLElement {
+  // h2, not h1: the cardio band above is this page's heading.
   return el("div", { class: "problem" }, [
-    el("h1", { text: "No interval data" }),
+    el("h2", { text: "No interval data" }),
     el("p", {
       text:
         "This workout record carries no 10-second samples, so there is nothing to plot. " +
@@ -113,11 +147,14 @@ function readoutConsole(
 ): ConsoleRow {
   const clockKey = el("span", { class: "k", text: "Session average" });
   const clockValue = el("span", { class: "v", text: clock(totalSeconds) });
-  // `auto repeat(auto-fit, ...)` collapses to a single column; the count has to be
-  // explicit because the number of channels varies by machine and program.
+  // `auto repeat(auto-fit, ...)` collapses to a single column, so the count has to
+  // be explicit — it varies by machine and program. It is passed as a custom
+  // property rather than as the grid declaration itself, because an inline
+  // `grid-template-columns` would outrank the narrow-viewport rule that has to
+  // break this row onto two lines.
   const root = el("div", {
     class: "console",
-    style: `grid-template-columns: auto repeat(${panels.length}, minmax(0, 1fr))`,
+    style: `--channels: ${panels.length}`,
   }, [el("div", { class: "clock" }, [clockKey, clockValue])]);
 
   for (const panel of panels) {
@@ -125,12 +162,12 @@ function readoutConsole(
       text: panel.stats.mean.toFixed(panel.spec.precision ?? 0),
     });
     readouts.set(panel.spec.key, value);
+    // The channel's colour is the cell's top rule — the site marks its own blocks
+    // with a coloured edge rather than a dot, and this row is the closest thing we
+    // have to its row of coloured channel buttons.
     root.append(
-      el("div", { class: "read" }, [
-        el("span", { class: "k" }, [
-          el("i", { class: "dot", style: `background: var(${panel.spec.colorVar})` }),
-          panel.spec.label,
-        ]),
+      el("div", { class: "read", style: `--accent: var(${panel.spec.colorVar})` }, [
+        el("span", { class: "k", text: panel.spec.label }),
         el("span", { class: "v" }, [value, el("small", { text: panel.spec.shortUnit })]),
       ]),
     );
@@ -264,7 +301,7 @@ function xAxis(
       class: "xlabel",
       x: ((LAYOUT.plotLeft + LAYOUT.plotRight) / 2).toFixed(1),
       y: (height - 6).toFixed(1),
-      text: "minutes elapsed",
+      text: "time (minutes)",
     }),
   );
   return out;
@@ -358,19 +395,21 @@ function sprintSection(sprint8: NonNullable<Workout["sprint8"]>): HTMLElement {
   const low = Math.min(...scores);
   const high = Math.max(...scores);
 
-  // Sprint scores cluster tightly (1060-1180 on the reference ride), so bars from
-  // zero would all be the same height and hide the only thing worth seeing: whether
-  // the rider faded. The baseline is therefore non-zero — and, per the project's own
-  // rule, said out loud on the panel rather than left for the reader to infer.
+  // The site draws this bar as a fixed track filled from the bottom, and so do we —
+  // but it fills from zero, and we do not. Sprint scores cluster tightly (1060-1180
+  // on the reference ride), so from zero every bar is the same height and the only
+  // thing worth seeing, whether the rider faded, disappears. The baseline is
+  // therefore non-zero — and, per the project's own rule, said out loud on the panel
+  // rather than left for the reader to infer.
   const [floor, ceiling] = niceDomain(low, high, 3);
-  const height = (score: number) => Math.round(((score - floor) / (ceiling - floor)) * 96) + 2;
+  const fill = (score: number) => Math.round(((score - floor) / (ceiling - floor)) * 98) + 2;
 
   const bars = el("div", { class: "sprints" });
   scores.forEach((score, index) => {
     bars.append(
       el("div", { class: "sprint" }, [
         el("span", { class: "v", text: String(score) }),
-        el("div", { class: "bar", style: `height: ${height(score)}px` }),
+        el("div", { class: "bar", style: `--fill: ${fill(score)}%` }),
         el("span", { class: "n", text: String(index + 1) }),
       ]),
     );
@@ -389,7 +428,7 @@ function sprintSection(sprint8: NonNullable<Workout["sprint8"]>): HTMLElement {
     }),
   ]);
 
-  return el("section", { class: "stack" }, [caption, bars]);
+  return el("section", { class: "card" }, [caption, bars]);
 }
 
 /* ------------------------------------------------------------ table view */
@@ -432,7 +471,10 @@ function footer(
   control: { mode: string; minLevel: number; maxLevel: number; changes: number; meanStep: number },
   hr: ReturnType<typeof heartRateStats>,
 ): HTMLElement {
-  const parts: string[] = [];
+  // The workout id belongs here rather than in the top bar: the bar's third slot
+  // collapses on a narrow viewport, and an id that disappears with the layout is
+  // not much use when someone is trying to quote which ride they are looking at.
+  const parts: string[] = [`Workout ${workout.id}.`];
   if (workout.machineId) parts.push(`Recorded by machine ${workout.machineId.slice(0, 8)}.`);
   parts.push(
     `Resistance moved ${control.changes} times, mean step ${control.meanStep.toFixed(2)} ` +

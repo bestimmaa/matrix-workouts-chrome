@@ -343,7 +343,7 @@ src/
   content/     content script — detects the route, reads localStorage, mounts UI
   parse/       localStorage blob -> typed Workout model (pure, no DOM)
   charts/      SVG chart modules (pure: data + scale -> SVG element)
-  ui/          layout, readout console, table view
+  ui/          layout, readout console, stat tiles, icons, table view
   api/         jfit HTTP client (credentials + history backfill), pure and DOM-free
   background/  MV3 service worker: carries the one cross-origin request
 fixtures/      real captured workout records — see below
@@ -402,9 +402,86 @@ Decisions taken up front (revisit deliberately, don't drift):
   itself rather than doing nothing. Note Chrome hides unpinned extensions behind the
   puzzle-piece menu — the icon has to be pinned to be the discoverable thing it is
   meant to be.
-- **No webfonts.** The prototype pulls Barlow and IBM Plex Mono from Google Fonts;
-  the extension makes no external request, so `src/ui/styles.css` is system stacks
-  only. Do not reintroduce a remote font.
+- **No webfonts of our own — but we name the site's.** The prototype pulls Barlow
+  and IBM Plex Mono from Google Fonts; the extension makes no external request, so
+  `src/ui/styles.css` contains no `@font-face` and no `@import`, and it never will.
+  What it *does* do is name `Industry` — the face the page itself loads from Typekit
+  — at the head of its stack. `@font-face` registrations are document-scoped and
+  reach into a shadow root, so on the site we inherit the real thing for free, and
+  anywhere else (the jsdom preview) the stack falls through to the same
+  `Rajdhani, "Helvetica Neue", Arial` the app itself declares. Naming a family costs
+  no request; fetching one is what the rule forbids.
+
+---
+
+## Wearing the platform's clothes
+
+The extended view is dressed as the site's own workout detail page, and the point of
+that is not flattery. This thing replaces a page the user already knows; if it
+arrives in a different visual language, every glance costs them a re-orientation
+they did not ask for, and the *contents* — which is the whole argument for the
+project — start reading as somebody else's numbers rather than as more of their own.
+
+**The tokens were read out of the site, not matched by eye.** The app carries its
+whole theme as one object in `assets/index-*.js`; the values in `src/ui/styles.css`
+are copied from it, and the app's own names are kept in the comments there so the
+mapping can be re-checked after an upstream change:
+
+| What | Value | The app's name for it |
+|---|---|---|
+| Primary / focus | `#e1261c`, hover `#870000` | `red`, `hover` |
+| Cardio accent — band, 6px card rule | `#ffa400` | `yellowCardio` |
+| Header bar | `#000000`, ink `#e6e6e6` | `backgroundsecondary`, `headertextsecondary` |
+| Detail plane | `#f5f5f5` | `workoutdetailbackground` |
+| Plot ground | `linear-gradient(135.28deg, #282828, #333333)` | the graph container |
+| Plot ink / gridlines | `#afb4b8` / white at `0.1` | `gray300`, its nivo theme |
+| Greys | `#dde0e2 #afb4b8 #999999 #666666 #4c4c4c #333333 #191919 #2d2d2d` | `gray200`…`gray1000` |
+| Faces | `Industry, Rajdhani, 'Helvetica Neue', Arial` / `Arial` | `fontfamilyprimary` / `fontfamilysecondary` |
+| Weights | 400 / 600 / 700 / 800 | `book` / `demi` / `bold` / `black` |
+
+The shapes that carry the resemblance, in rough order of how much work each does:
+
+- **Square corners, everywhere.** The app sets `border-radius: 0` on everything it
+  styles itself. Rounded cards and a pill launcher were the loudest thing marking
+  the old view as foreign; nothing here has a radius now, the launcher included.
+- **Bar, band, plane.** A black 44px header with a `◀` back control on the left and
+  the date centred; a full-width sticky cardio band as the h1; then the content on
+  the light plane. Both bars are sticky, which is why the readout console's
+  `top: 100px` is 44 + 56 and not a guess.
+- **The workout card**: white, `border-left: 6px solid` the cardio accent. The stat
+  tiles, the sprint panel and the table all wear it.
+- **The metric tile**: label in Arial at 13px grey, then a 21px icon, the value at
+  21px bold, and the unit shrunk to 12px uppercase grey beside it — the site's own
+  `metricValue` / `metricUnits` / `metricLabel`, including reading a duration as
+  `45 m 10 s` rather than `45:10`.
+- **The sprint bar**: a fixed 140px track filled from the bottom, which is exactly
+  how the stock page draws it. *Its* fill starts at zero and ours does not — see the
+  Sprint 8 rule under Visualization conventions; the form is theirs, the statistics
+  are ours.
+
+Three places we deliberately do not follow it, all of them noted in the code:
+
+1. **The series palette.** See the palette rule above.
+2. **Band contrast.** The site sets that title in `#e6e6e6` on `#ffa400` — 2.1:1,
+   under the 3:1 that even large bold text needs. It is our h1, so it is set in the
+   app's own near-black instead, which is what the app puts on its amber-ruled cards
+   anyway.
+3. **Live numerals stay monospaced.** The readout console and the table keep the
+   mono stack, because every value in that row is rewritten on each pointer move
+   while scrubbing and proportional digits make the whole row jitter as they change
+   width. The static tiles, which never change, use the site's own face.
+
+**`src/ui/icons.ts` exists because the site puts a glyph in front of every metric
+value.** Hand-authored on a 24-unit grid, stroked in `currentColor`, `aria-hidden`
+— the extension ships no assets and makes no request, so an icon font or a sprite
+sheet was never available; and every glyph sits beside a text label that already
+says the same thing.
+
+**A restyle may not drop a figure.** Rebuilding the top bar quietly lost the workout
+id — it had been sitting in an eyebrow nobody thought of as data. It now lives in
+the footer's provenance line, where a narrow viewport cannot collapse it away, and
+`dashboard.test.ts` asserts every summary figure is still on the page. Add to that
+assertion rather than trusting a careful eye.
 
 ---
 
@@ -471,12 +548,25 @@ suggestions:
   Same telemetry, different headline. Implemented in `src/charts/plan.ts`, which
   orders panels off `controlSignature` first and `programType` second, and prints
   the reason it chose in the page's lede so the ordering is never magic.
-- **Categorical palette, in fixed slot order** — power `#2a78d6`, resistance
-  `#eb6834`, cadence `#1baf7a`, heart rate `#cc79a7` (light) / `#3987e5`,
-  `#d95926`, `#199e70`, `#d68cb5` (dark). Validated colorblind-safe as a set; if
-  you add a series, re-validate rather than picking a hue by eye. Slot 4 is
+- **Categorical palette, in fixed slot order** — power `#3987e5`, resistance
+  `#d95926`, cadence `#199e70`, heart rate `#d68cb5`. Validated colorblind-safe as a
+  set; if you add a series, re-validate rather than picking a hue by eye. Slot 4 is
   Okabe-Ito reddish purple — the first three already sit in that family, so the
   fourth was taken from it rather than eyeballed.
+
+  **One set, not one per theme.** Every mark this project draws sits inside
+  `.telemetry`, which wears the site's own graph ground
+  (`linear-gradient(135.28deg, #282828, #333333)`) in *both* themes, exactly as the
+  stock detail page does. There is no light ground to design a second set against,
+  so the lighter light-theme variants this project used to carry
+  (`#2a78d6`/`#eb6834`/`#1baf7a`/`#cc79a7`) are gone rather than left as dead
+  tokens. If a chart ever lands on the light plane, that pairs with bringing them
+  back — do both or neither.
+
+  **The platform's own channel colours were not adopted**, and this is the one place
+  the restyle stops. It paints distance `#ff8500`, speed `#3f9c47`, resistance
+  `#6b9ccd`, incline `#6ac59f` and heart rate `#db3547` — a green/red pair on the
+  same axis, plus two greens. The chrome is theirs; the data is ours.
 - **Slots belong to channels, not positions**, so power is blue in every workout
   regardless of which panel leads. Speed and incline reuse slots 1 and 2 because
   they are stand-ins that only appear when the machine reports no power / no
@@ -487,6 +577,9 @@ suggestions:
 - **Design both themes** via CSS custom properties: bare `:root` for light,
   `@media (prefers-color-scheme: dark)` guarded with `:root:not([data-theme="light"])`,
   and `:root[data-theme="dark"]`. Never define a color only inside a media block.
+  The brand chrome — black bar, cardio band, plot ground, brand red — is *not*
+  themed: it is the same in both, as it is on the stock page. Only the plane,
+  surfaces, ink and rules flip.
 - Thin marks (2px lines), hairline **solid** gridlines, no number on every point,
   a table view always available.
 - **Label a non-zero axis baseline.** Cadence is legitimately plotted from ~70 rpm
@@ -495,9 +588,11 @@ suggestions:
 
 `reference/prototype-telemetry.html` is the standalone page that motivated this
 project. It has now been **ported** into `src/charts/` + `src/ui/` — layout
-constants, palette, caption structure, crosshair behaviour and table view all come
-from it. Keep it as the design reference; it is frozen, so when the two disagree,
-the code is what ships.
+constants, caption structure, crosshair behaviour and table view all come from it.
+Keep it as the reference for *what a panel is*; it is frozen, so when the two
+disagree, the code is what ships. It is no longer the reference for how the page
+looks: the chrome, the type and the colour now come from the platform itself — see
+"Wearing the platform's clothes".
 
 ---
 

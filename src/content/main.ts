@@ -45,23 +45,29 @@ function showStock(): void {
   surface?.collapse();
 }
 
-function shell(children: (Node | string)[]): HTMLElement {
-  const back = el("button", { type: "button", text: "Show stock page" });
+/**
+ * Everything that is not a rendered workout still wears the same chrome — black
+ * bar, title band, content plane — so a failure or an offer reads as this view
+ * having something to say, not as the page having broken. The band goes brand red
+ * rather than cardio amber: there is no workout behind it to colour it by.
+ */
+function shell(title: string, children: (Node | string)[]): HTMLElement {
+  const back = el("button", { type: "button", class: "back", text: "Show stock page" });
   back.addEventListener("click", showStock);
   return el("div", { class: "wrap" }, [
-    el("div", { class: "bar" }, [
-      el("span", { class: "eyebrow", text: "Full Matrix Workouts" }),
-      el("span", { class: "spacer" }),
+    el("div", { class: "topbar" }, [
       back,
+      el("div", { class: "date", text: "Full telemetry" }),
+      el("div", { class: "ident", text: "Full Matrix Workouts" }),
     ]),
-    ...children,
+    el("h1", { class: "band alert", text: title }),
+    el("div", { class: "page" }, children),
   ]);
 }
 
 function problem(title: string, message: string, action?: HTMLElement): HTMLElement {
-  return shell([
+  return shell(title, [
     el("div", { class: "problem" }, [
-      el("h1", { text: title }),
       el("p", { text: message }),
       ...(action ? [action] : []),
     ]),

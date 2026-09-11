@@ -6,7 +6,7 @@ import { toWorkout } from "../parse/workout.js";
 import { flagHeartRateDropouts } from "../parse/heartRate.js";
 import type { Workout } from "../parse/types.js";
 import { renderDashboard } from "./dashboard.js";
-import { clock, km, modeLabel } from "./format.js";
+import { clock, hms, km, modeLabel } from "./format.js";
 
 function fixture(id: string): Workout {
   // jsdom rebases import.meta.url onto the document URL, so resolve from cwd.
@@ -45,11 +45,50 @@ describe("format", () => {
     expect(modeLabel("unknown", null)).toBe("Unidentified program");
     expect(modeLabel("target_watts", 20)).toBe("Target watts");
   });
+
+  it("splits a duration into the value/unit pairs the site's tiles use", () => {
+    expect(hms(2710)).toEqual([["45", "m"], ["10", "s"]]);
+    expect(hms(3725)).toEqual([["1", "h"], ["2", "m"], ["5", "s"]]);
+  });
 });
 
 describe("renderDashboard", () => {
   it("renders every fixture without throwing", () => {
     for (const id of ALL) expect(() => render(id)).not.toThrow();
+  });
+
+  it("wears the site's chrome: black bar, cardio band, content plane", () => {
+    const root = render("6a95b033c23a154beb856bce");
+    // The date sits in the bar's middle slot, as it does on the stock detail page.
+    expect(root.querySelector(".topbar .date")?.textContent).toMatch(/2026/);
+    // The band is the view's only h1, and names the machine and the program.
+    const bands = root.querySelectorAll("h1");
+    expect(bands).toHaveLength(1);
+    expect(bands[0]!.className).toBe("band");
+    expect(bands[0]!.textContent).toBe("Upright bike · Sprint 8");
+    expect(root.querySelector(".page")).toBeTruthy();
+  });
+
+  /*
+   * Restyling is not allowed to quietly drop a figure. Every fact the view carried
+   * before it was dressed as the platform's own page has to still be on it — this
+   * caught the workout id going missing when the top bar was rebuilt.
+   */
+  it("still carries every summary figure it had before", () => {
+    const workout = fixture("6aa045668d2b6d09c612785d");
+    const root = renderDashboard(workout, { onShowStock: () => {} });
+
+    const labels = [...root.querySelectorAll(".tile .k")].map((t) => t.textContent);
+    expect(labels).toEqual(["Duration", "Distance", "Calories", "Samples", "Interval"]);
+
+    const values = [...root.querySelectorAll(".tile .v")].map((t) => t.textContent ?? "");
+    expect(values[0]).toBe("45m10s");
+    expect(values[1]).toBe("21.69km");
+    expect(values[2]).toBe(`${workout.calories}kcal`);
+    expect(values[3]).toBe(`${workout.samples.length}recorded`);
+
+    // The id used to sit in the top bar; it now lives in the provenance line.
+    expect(root.querySelector("footer")?.textContent).toContain(workout.id);
   });
 
   it("gives each panel a caption, an accessible label and a series path", () => {
