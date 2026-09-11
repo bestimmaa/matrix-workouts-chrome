@@ -775,7 +775,7 @@ This handles personal health data.
 **Vitest**, unit tests against `fixtures/`. All fixtures are **real captured
 records** — do not "clean" them, the mess is the point.
 
-`fixtures/persist-root.json` is a synthetic `localStorage` blob wrapping eight of the
+`fixtures/persist-root.json` is a synthetic `localStorage` blob wrapping nine of the
 real records in the true double-encoded shape; it is what the parser tests load.
 Each `raw-<workoutId>.json` is one record, with a `.csv` of the same series beside
 it for eyeballing.
@@ -796,6 +796,7 @@ Use it when changing anything about heart-rate filtering.
 | `6aa194a0…` | 46 target HR | 314 | 80 HR dropouts including zeros |
 | `6aa04566…` | 46 target HR | 272 | the control: strap clean throughout |
 | `6a95b033…` | **18 Sprint 8** | 121 | the only structural variant; sprint scores, 400 W spikes, resistance 23 |
+| `6aa2d8a8…` | **18 Sprint 8** | 121 | **the post-change shape**: `sprintScores` and `totalSweatScore`, but *neither* level field. The only fixture exercising `sprint8ProgramLevel ?? programLevel` with both absent — which is now the only case that occurs |
 | `6a941332…` | 0 | 61 | unidentified program |
 | `6a8336b6…` | 47 | 19 | shortest ride — guards off-by-one on tiny series |
 | `6a7cab8c…` | 20 target watts | 277 | the confirmed watt-target ride |
@@ -803,8 +804,17 @@ Use it when changing anything about heart-rate filtering.
 | `6a5e4fe4…` | 38 | 89 | resistance pinned at 1 while power ramps — breaks the "power follows resistance" assumption |
 | `6a998daf…` | 20 target watts | 362 | **snake_case, captured from the API**; strap glitching badly, and the only ride with independent ground truth |
 
-Between them these cover every `programType` in the account (0, 18, 20, 38, 46, 47)
-and both bike types.
+Between them these cover every `programType` in the account (0, 18, 20, 38, 46, 47),
+both bike types, and both sides of the upstream shape change.
+
+**`6aa2d8a8…` was captured through the extension's own export**, which is what that
+feature was for — but note the capture route matters and the file records which one
+was used. An export round-trips through `JSON.stringify`, so a `28.0` on the wire
+would come back as `28`; that record happens to contain no whole-number floats, so
+its bytes are identical either way (checked against the raw `localStorage` text
+before it was committed). Six older fixtures *do* carry `.0` values. If you capture a
+fixture from an export and it has them, pull the raw text out of `localStorage`
+instead rather than committing the normalized numbers.
 
 Treadmill and rower fixtures are deliberately **not** being collected — see Scope
 above. If that changes, note that those records populate different fields

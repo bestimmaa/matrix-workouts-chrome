@@ -27,6 +27,9 @@ const PERSIST_BLOB = fixture("persist-root.json");
 const TARGET_HR_DROPOUTS = "6aa194a08d2b6d09c61e9500"; // 09 Sep, strap glitching
 const TARGET_HR_CLEAN = "6aa045668d2b6d09c612785d"; // 08 Sep, strap clean
 const SPRINT_8 = "6a95b033c23a154beb856bce"; // 31 Aug, HIIT
+// 10 Sep, HIIT. Same mode as SPRINT_8 but captured after the upstream shape
+// changed: it carries `id`, and neither `sprint8ProgramLevel` nor `programLevel`.
+const SPRINT_8_NO_LEVEL = "6aa2d8a88d2b6d09c62953f0";
 const PROGRAM_0 = "6a9413328d2b6d09c6b512a9"; // 30 Aug, program 0
 const PROGRAM_47 = "6a8336b68d2b6d09c634fc60"; // 17 Aug, program 47, only 19 samples
 const PROGRAM_20 = "6a7cab8cc23a154bebccef65"; // 12 Aug, program 20
@@ -42,7 +45,7 @@ const storage = (value: string | null): ReadableStorage => ({
 
 describe("persisted blob", () => {
   it("parses the double-encoded store (values are JSON strings)", () => {
-    expect(extractRawWorkouts(PERSIST_BLOB)).toHaveLength(8);
+    expect(extractRawWorkouts(PERSIST_BLOB)).toHaveLength(9);
   });
 
   it("tolerates a slice that is already an object", () => {
@@ -70,7 +73,7 @@ describe("persisted blob", () => {
   it("loads and sorts cached workouts newest first", () => {
     const loaded = loadCachedWorkouts(storage(PERSIST_BLOB));
     expect(loaded.map((w) => w.id)).toEqual([
-      TARGET_HR_DROPOUTS, TARGET_HR_CLEAN, SPRINT_8, PROGRAM_0,
+      SPRINT_8_NO_LEVEL, TARGET_HR_DROPOUTS, TARGET_HR_CLEAN, SPRINT_8, PROGRAM_0,
       PROGRAM_47, PROGRAM_20, RECUMBENT, PROGRAM_38,
     ]);
   });
@@ -486,6 +489,40 @@ describe("heart rate quality", () => {
     expect(Math.round(stats.meanBpm!)).not.toBe(142);
     expect(dropouts.reported.minHeartRateBpm).toBe(87);
     expect(stats.minBpm).not.toBe(87);
+  });
+});
+
+describe("a Sprint 8 record from after the upstream shape changed", () => {
+  /*
+   * Read live on 11 Sep 2026: the platform no longer sends `programLevel` or
+   * `sprint8ProgramLevel`. Every older Sprint 8 fixture still has both, so without
+   * this record the `sprint8ProgramLevel ?? programLevel` fallback has nothing that
+   * exercises the case where neither exists — which is now the only case that occurs.
+   */
+  const workout = findWorkout(loadCachedWorkouts(storage(PERSIST_BLOB)), SPRINT_8_NO_LEVEL)!;
+
+  it("is still recognized as Sprint 8, structurally", () => {
+    expect(workout.mode).toBe("sprint_8");
+    expect(workout.programType).toBe(18);
+    expect(workout.sprint8?.scores).toHaveLength(8);
+  });
+
+  it("reports no program level rather than inventing one", () => {
+    const raw = JSON.parse(fixture(`raw-${SPRINT_8_NO_LEVEL}.json`)) as Record<string, unknown>;
+    expect(raw["sprint8ProgramLevel"]).toBeUndefined();
+    expect(raw["programLevel"]).toBeUndefined();
+    expect(workout.sprint8?.programLevel).toBeNull();
+  });
+
+  it("still holds the invariant that the sweat score is the sum of the eight", () => {
+    const scores = workout.sprint8!.scores;
+    expect(workout.sprint8!.sweatScore).toBe(scores.reduce((a, b) => a + b, 0));
+  });
+
+  it("carries the two fields hand-capture used to drop", () => {
+    const raw = JSON.parse(fixture(`raw-${SPRINT_8_NO_LEVEL}.json`)) as Record<string, unknown>;
+    expect(raw["id"]).toBe(SPRINT_8_NO_LEVEL);
+    expect(raw["modelId"]).toBe("5bcf75c16a6ffe5719a3a52d");
   });
 });
 
