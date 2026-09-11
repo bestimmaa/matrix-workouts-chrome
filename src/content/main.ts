@@ -10,13 +10,20 @@ import { observeLocation, workoutIdFromPath } from "./route.js";
 /**
  * Content script entry point.
  *
- * Contract with the user: we only ever cover the workout detail route, we always
- * offer a way back to the stock page, and a failure renders a readable explanation
- * rather than a blank sheet over their real dashboard.
+ * Contract with the user: the site's own dashboard is what they get by default —
+ * we never take the page without being asked. On the workout detail route we put a
+ * pill in the corner, and that pill toggles the extended view. We only ever cover
+ * that one route, we always offer a way back to the stock page, and a failure
+ * renders a readable explanation rather than a blank sheet over their real
+ * dashboard.
  */
 
 let surface: Surface | null = null;
-/** The workout currently on screen, so a poll tick does not re-render needlessly. */
+/**
+ * The workout the sheet currently holds, so reopening the pill and a poll tick on
+ * the same route do not re-render needlessly. Null while the sheet holds something
+ * that is not a workout — a problem view, or the history offer.
+ */
 let renderedId: string | null = null;
 /**
  * History fetched from the API this session. In memory only, never persisted — it
@@ -25,7 +32,7 @@ let renderedId: string | null = null;
 let history: Workout[] | null = null;
 
 function ensureSurface(): Surface {
-  if (!surface) surface = createSurface();
+  if (!surface) surface = createSurface({ onOpen: openView });
   return surface;
 }
 
@@ -111,21 +118,8 @@ function offerHistory(view: Surface, id: string): void {
   );
 }
 
-function renderRoute(pathname: string): void {
-  const id = workoutIdFromPath(pathname);
-
-  if (id === null) {
-    // Off the workout route entirely: remove ourselves completely rather than
-    // leaving a pill floating over a page this extension does not handle.
-    surface?.destroy();
-    surface = null;
-    renderedId = null;
-    return;
-  }
-  if (id === renderedId && surface?.visible) return;
-
-  const view = ensureSurface();
-
+/** Fill the sheet with one workout's dashboard. Does not change visibility. */
+function renderWorkout(view: Surface, id: string): void {
   try {
     const workout =
       findWorkout(loadCachedWorkouts(localStorage), id) ?? (history ? findWorkout(history, id) : null);
@@ -147,39 +141,73 @@ function renderRoute(pathname: string): void {
     view.render(problem("Could not read this workout", message));
     renderedId = null;
   }
+}
+
+/**
+ * Show the extended view. Both entry points — the pill and the toolbar icon — land
+ * here, and it is the only place that covers the page.
+ *
+ * The sheet is filled here rather than on navigation, so a user who never opens it
+ * pays nothing for parsing and charting a ride they are not looking at.
+ */
+function openView(): void {
+  const view = ensureSurface();
+  const id = workoutIdFromPath(location.pathname);
+
+  if (id === null) {
+    view.render(
+      problem(
+        "Open a workout first",
+        "This view replaces the workout detail page. Open any workout from the list, " +
+          "then use this button again there.",
+      ),
+    );
+    renderedId = null;
+  } else if (id !== renderedId) {
+    renderWorkout(view, id);
+  }
 
   view.expand();
 }
 
 /**
- * Toolbar-icon toggle. The pill only exists once the view has been collapsed, and
- * only on the detail route; this works from anywhere on the site and is where a
- * user looks for an extension's UI.
+ * React to navigation. Note what this does *not* do: expand. The site's own
+ * dashboard is the default, and an open view is a thing the user asked for — so a
+ * route change only keeps an already-open view in sync, and otherwise leaves the
+ * pill sitting over the stock page.
+ */
+function renderRoute(pathname: string): void {
+  const id = workoutIdFromPath(pathname);
+
+  if (id === null) {
+    // Off the workout route entirely: remove ourselves completely rather than
+    // leaving a pill floating over a page this extension does not handle.
+    surface?.destroy();
+    surface = null;
+    renderedId = null;
+    return;
+  }
+
+  const view = ensureSurface();
+  if (id === renderedId) return;
+
+  // The sheet now holds the wrong workout, so it must not be shown as-is.
+  renderedId = null;
+  if (view.visible) renderWorkout(view, id);
+  else view.collapse();
+}
+
+/**
+ * Toolbar-icon toggle. Does the same job as the pill, but from anywhere on the
+ * site and from where a user looks for an extension's UI — the pill only exists on
+ * the detail route.
  */
 function toggle(): void {
   if (surface?.visible) {
     surface.collapse();
     return;
   }
-  if (surface) {
-    surface.expand();
-    return;
-  }
-  // Nothing mounted yet — off the detail route, or the surface was destroyed.
-  const id = workoutIdFromPath(location.pathname);
-  if (id === null) {
-    const view = ensureSurface();
-    view.render(
-      problem(
-        "Open a workout first",
-        "This view replaces the workout detail page. Open any workout from the list, " +
-          "and it will take over automatically — or use this button again there.",
-      ),
-    );
-    view.expand();
-    return;
-  }
-  renderRoute(location.pathname);
+  openView();
 }
 
 function start(): void {

@@ -51,8 +51,8 @@ crosshair is inert there; it needs the live listeners.
 
 Built, 95 tests green: the parse layer (`src/parse/`), the chart geometry layer
 (`src/charts/`), the view (`src/ui/`), and the MV3 content script (`src/content/`).
-The extension loads, takes over `/workouts/:id`, and renders every fixture in both
-themes.
+The extension loads, puts its pill on `/workouts/:id`, and renders every fixture in
+both themes once that pill is used.
 
 Also built: the HTTP API client (`src/api/`) and the service worker that carries its
 one request, so a workout outside the cached week can be fetched on demand — the
@@ -353,7 +353,8 @@ Decisions taken up front (revisit deliberately, don't drift):
 
 - **TypeScript + Vite**, MV3.
 - **Take over the stock detail view in place** rather than adding a side panel —
-  the point is to replace the limited dashboard, not sit next to it.
+  the point is to replace the limited dashboard, not sit next to it. *In place*, but
+  **only when asked**: see the default-collapsed rule below.
 - **Hand-authored SVG charts, no runtime charting library.** See below.
 - **Zero runtime dependencies.** The whole bundle is 27 kB / 9.8 kB gzipped, ships
   as one IIFE, and makes no network request of any kind.
@@ -371,20 +372,36 @@ Decisions taken up front (revisit deliberately, don't drift):
   one element restores the stock page exactly. Every view carries a **Show stock
   page** button, and a parse failure renders a readable explanation — never a blank
   sheet over the user's real dashboard.
-- **Handing the page back must be reversible.** *Show stock page* collapses the
-  overlay to a corner pill rather than dismissing it. This is not polish: the stock
-  page renders its own "Oops! An error has occurred." for any workout outside the
-  cached week, so a one-way hide strands the user on that error with no route back
-  to the view that was working. Collapsed, the host shrinks to the pill — a
-  full-viewport host would keep swallowing clicks meant for the page underneath.
-  Leaving the workout route destroys the surface outright; the pill must never
-  float over a page this extension does not handle.
-- **The toolbar icon is the entry point that always works.** The pill only exists
-  once the view has been collapsed, and only on the detail route. `chrome.action`
-  fires in the service worker, which relays a `toggleSurface` message to the content
-  script. Off the detail route it explains itself rather than doing nothing. Note
-  Chrome hides unpinned extensions behind the puzzle-piece menu — the icon has to be
-  pinned to be the discoverable thing it is meant to be.
+- **Collapsed is the default; the site's own dashboard is what loads.** Navigating
+  to `/workouts/:id` does *not* cover the page — it mounts the surface collapsed, so
+  the user sees the stock dashboard with our pill in the corner, and the extended
+  view appears only when they ask for it. This was a deliberate reversal of the
+  original auto-takeover: an extension that seizes a page on sight makes the stock
+  summary unreachable without disabling it, and the stock page is still the only
+  place some things live. Two consequences to preserve:
+  - **The sheet is filled on open, not on navigation** (`openView()` in
+    `src/content/main.ts`). A user who never opens it pays nothing for parsing and
+    charting a ride they are not looking at.
+  - **Navigation never expands.** `renderRoute` only keeps an *already open* view in
+    sync with the route; otherwise it leaves the pill alone. An open view is a thing
+    the user asked for, and so is a closed one.
+- **The pill is the toggle, and handing the page back must be reversible.** *Show
+  stock page* collapses the overlay to the pill rather than dismissing it, and the
+  pill brings it back. This is not polish: the stock page renders its own "Oops! An
+  error has occurred." for any workout outside the cached week, so a one-way hide
+  strands the user on that error with no route back to the view that was working.
+  Collapsed, the host shrinks to the pill — a full-viewport host would keep
+  swallowing clicks meant for the page underneath. Leaving the workout route
+  destroys the surface outright; the pill must never float over a page this
+  extension does not handle. The pill's click goes through `SurfaceOptions.onOpen`
+  rather than calling `expand()` itself, because opening now means rendering first.
+- **The toolbar icon is the same toggle, from anywhere.** The pill only exists on
+  the detail route; the icon works across the site and is where a user looks for an
+  extension's UI. `chrome.action` fires in the service worker, which relays a
+  `toggleSurface` message to the content script. Off the detail route it explains
+  itself rather than doing nothing. Note Chrome hides unpinned extensions behind the
+  puzzle-piece menu — the icon has to be pinned to be the discoverable thing it is
+  meant to be.
 - **No webfonts.** The prototype pulls Barlow and IBM Plex Mono from Google Fonts;
   the extension makes no external request, so `src/ui/styles.css` is system stacks
   only. Do not reintroduce a remote font.

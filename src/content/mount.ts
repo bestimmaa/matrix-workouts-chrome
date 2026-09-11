@@ -10,10 +10,12 @@ const HOST_ID = "full-matrix-workouts-root";
  * staring at a blank page if our render ever failed — we cover the page and can be
  * removed without a trace.
  *
- * Collapsing is a TOGGLE, not a dismissal. Handing the page back has to be
- * reversible: the stock page shows its own "Oops!" error for any workout outside
- * the week it caches, so a one-way hide strands the user there with no way back to
- * the view that was working. Collapsed, the host shrinks to a corner pill.
+ * **Collapsed is the resting state.** The site's own dashboard is what loads; the
+ * surface sits in the corner as a pill until the user asks for the extended view.
+ * Expanding and collapsing are the two halves of one TOGGLE, never a dismissal:
+ * the stock page shows its own "Oops!" error for any workout outside the week it
+ * caches, so a one-way hide would strand the user there with no way back to the
+ * view that was working.
  */
 export interface Surface {
   /** Replace the contents of the sheet. */
@@ -26,7 +28,16 @@ export interface Surface {
   destroy(): void;
 }
 
-export function createSurface(): Surface {
+export interface SurfaceOptions {
+  /**
+   * What the pill does. The caller owns it because opening may mean rendering
+   * first — the sheet is filled on demand, not on every route change.
+   * Defaults to a bare `expand()`.
+   */
+  onOpen?(): void;
+}
+
+export function createSurface(options: SurfaceOptions = {}): Surface {
   document.getElementById(HOST_ID)?.remove();
 
   const host = document.createElement("div");
@@ -43,7 +54,7 @@ export function createSurface(): Surface {
   launcher.type = "button";
   launcher.className = "launcher";
   launcher.textContent = "Full telemetry";
-  launcher.title = "Reopen the full telemetry view";
+  launcher.title = "Show the full telemetry view";
 
   shadow.append(style, sheet, launcher);
 
@@ -94,6 +105,9 @@ export function createSurface(): Surface {
     },
   };
 
-  launcher.addEventListener("click", () => surface.expand());
+  launcher.addEventListener("click", () => {
+    if (options.onOpen) options.onOpen();
+    else surface.expand();
+  });
   return surface;
 }

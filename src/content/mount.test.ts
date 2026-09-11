@@ -52,6 +52,18 @@ describe("createSurface", () => {
     expect(parts().launcher.hidden).toBe(true);
   });
 
+  it("routes the pill through onOpen, so the sheet can be filled on demand", () => {
+    // Collapsed is the resting state and the sheet starts empty, so the pill has to
+    // reach the caller rather than expand over the page with nothing in it.
+    const opens: number[] = [];
+    const surface = createSurface({ onOpen: () => opens.push(1) });
+    surface.collapse();
+
+    parts().launcher.click();
+    expect(opens).toHaveLength(1);
+    expect(surface.visible).toBe(false);
+  });
+
   it("keeps the rendered view across a collapse, with no re-render", () => {
     const surface = createSurface();
     const content = document.createElement("p");
