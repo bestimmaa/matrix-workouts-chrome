@@ -36,6 +36,11 @@ export interface RawSprintScores {
 
 export interface RawWorkout {
   workoutId: string;
+  /**
+   * The record's own document id, and the segment the site's `/workouts/:id` links
+   * use. NOT interchangeable with `workoutId` — see `Workout.routeId`.
+   */
+  id?: string;
   workoutTime: string;
   machineType: MachineType;
   exerciseTitle?: string;
@@ -78,7 +83,16 @@ export interface Sample {
 }
 
 export interface Workout {
+  /** The record's `workoutId`. Fixture filenames and the export are named by it. */
   id: string;
+  /**
+   * The id the site's own `/workouts/:id` links carry — the record's `id` field.
+   *
+   * On every ride recorded before 13 Aug 2026 this is a DIFFERENT value from `id`,
+   * so anything resolving a URL must go through `findWorkout`, which accepts either.
+   * Falls back to `id` for a record that carries no `id` field at all.
+   */
+  routeId: string;
   /** Start of the workout. */
   startedAt: Date;
   machineType: MachineType;

@@ -87,8 +87,14 @@ function toSprint8(raw: RawWorkout): Sprint8Result | null {
 /** Normalize one raw record. Accepts either the API or the localStorage shape. */
 export function toWorkout(input: Record<string, unknown>): Workout {
   const raw = camelizeWorkout(input);
-  const id = typeof raw.workoutId === "string" ? raw.workoutId : null;
-  if (!id) throw new WorkoutParseError("Workout record has no workoutId.");
+  // Two identifiers, and they are not interchangeable: `workoutId` names the ride,
+  // `id` is what the site's own /workouts/:id links carry. They coincide only on
+  // rides recorded from 13 Aug 2026 onwards. Either one alone still identifies a
+  // record, so a record carrying only one of them is read rather than rejected.
+  const workoutId = typeof raw.workoutId === "string" ? raw.workoutId : null;
+  const recordId = typeof raw.id === "string" ? raw.id : null;
+  const id = workoutId ?? recordId;
+  if (!id) throw new WorkoutParseError("Workout record has no workoutId and no id.");
 
   const startedAt = new Date(String(raw.workoutTime));
   if (Number.isNaN(startedAt.getTime())) {
@@ -109,6 +115,7 @@ export function toWorkout(input: Record<string, unknown>): Workout {
 
   return {
     id,
+    routeId: recordId ?? id,
     startedAt,
     machineType: typeof raw.machineType === "string" ? raw.machineType : "unknown",
     machineId: typeof raw.machineId === "string" ? raw.machineId : null,

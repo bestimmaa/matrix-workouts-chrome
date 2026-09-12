@@ -57,9 +57,14 @@ export function cachedMachineType(
     return null;
   }
 
+  // Matched against both identifiers, in both key styles: `workoutId` names the
+  // ride but the URL this is called with carries the record's `id`, and the two
+  // differ on every ride before 13 Aug 2026. See `Workout.routeId`.
   const record = records.find((w) => {
     const raw = w as Record<string, unknown>;
-    return raw["workoutId"] === workoutId || raw["workout_id"] === workoutId;
+    return (
+      raw["id"] === workoutId || raw["workoutId"] === workoutId || raw["workout_id"] === workoutId
+    );
   }) as Record<string, unknown> | undefined;
   if (!record) return null;
 

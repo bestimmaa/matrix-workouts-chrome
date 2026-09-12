@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError, fetchWorkoutHistory, workoutsUrl, type FetchLike } from "./client.js";
 import { readCredentials, redact } from "./credentials.js";
 import { WorkoutParseError } from "../parse/types.js";
+import { findWorkout } from "../parse/index.js";
 
 const TOKEN = "test-token-do-not-use-a-real-one";
 const CREDENTIALS = { exerciserId: "ex-1", token: TOKEN };
@@ -129,6 +130,32 @@ describe("fetchWorkoutHistory", () => {
     expect(full.truncated).toBe(false);
     const partial = await fetchWorkoutHistory(CREDENTIALS, respond({ workouts: [RECORD], paging: { total: 43 } }));
     expect(partial.truncated).toBe(true);
+  });
+
+  /*
+   * The bug this guards: the history came back complete and the view still told the
+   * user their workout was not in it. Every ride recorded before 13 Aug 2026 carries
+   * a `workout_id` that differs from the `id` in its own /workouts/:id link — 25 of
+   * one account's 45 records — so a lookup that knew only `workout_id` missed all of
+   * them. The pair below was read live from the API on 12 Sep 2026.
+   */
+  it("returns history that can be found by the id the site's links carry", async () => {
+    const older = {
+      ...RECORD,
+      workout_id: "6a7cab8cc23a154bebccef65",
+      id: "6a7cabca18b66a215bd6d6ad",
+      workout_time: "2026-08-12T16:35:08.000Z",
+    };
+    const result = await fetchWorkoutHistory(CREDENTIALS, respond({ workouts: [older, RECORD] }));
+
+    expect(result.skipped).toBe(0);
+    expect(findWorkout(result.workouts, "6a7cabca18b66a215bd6d6ad")!.id).toBe(
+      "6a7cab8cc23a154bebccef65",
+    );
+    // The record's own name still resolves, and the two are not conflated.
+    expect(findWorkout(result.workouts, "6a7cab8cc23a154bebccef65")!.routeId).toBe(
+      "6a7cabca18b66a215bd6d6ad",
+    );
   });
 
   it("handles an empty history", async () => {

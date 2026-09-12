@@ -49,7 +49,7 @@ crosshair is inert there; it needs the live listeners.
 
 ## Status
 
-Built, 95 tests green: the parse layer (`src/parse/`), the chart geometry layer
+Built, 166 tests green: the parse layer (`src/parse/`), the chart geometry layer
 (`src/charts/`), the view (`src/ui/`), and the MV3 content script (`src/content/`).
 The extension loads, puts its pill on `/workouts/:id`, and renders every fixture in
 both themes once that pill is used.
@@ -167,7 +167,8 @@ keys. The API also carries four fields the cache does not: `program_id`,
 
 | Field | Notes |
 |---|---|
-| `workoutId` | matches the `/workouts/:id` URL segment |
+| `workoutId` | names the ride. **Not** the URL segment — see "Two ids, not one" |
+| `id` | the record's document id, and the `/workouts/:id` segment the site links to |
 | `machineType` / `exerciseTitle` | `upright_bike`, `treadmill`, `rower`, … |
 | `machineId` | UUID of the physical machine |
 | `programType` | integer console program id (e.g. `46`) |
@@ -191,14 +192,14 @@ caption drops its `· level N` clause. Treat it as the standing warning that thi
 shape moves without notice, which is the entire reason the export carries
 `source.record`.
 
-Two fields sit outside that table and are easy to lose: **`id`, which duplicates
-`workoutId`, and `modelId`, the machine *model* (`5bcf75c1…` for both bikes seen) —
-which is not `machineId`, the UUID of the individual physical unit.** They are called
-out here because the first real export caught two fixtures missing both: `raw-6aa04566…`
-and `raw-6aa194a0…` were the two captured by hand through the devtools console, and
-hand-capture enumerates a field list and drops whatever is not on it. That is the
-losslessness argument for `source.record`, demonstrated rather than asserted. Both
-fixtures have since been patched from exports.
+`modelId` sits outside that table and is easy to lose: **the machine *model*
+(`5bcf75c1…` for both bikes seen) — which is not `machineId`, the UUID of the
+individual physical unit.** It is called out here because the first real export
+caught two fixtures missing it along with `id`: `raw-6aa04566…` and `raw-6aa194a0…`
+were the two captured by hand through the devtools console, and hand-capture
+enumerates a field list and drops whatever is not on it. That is the losslessness
+argument for `source.record`, demonstrated rather than asserted. Both fixtures have
+since been patched from exports.
 
 `toWorkout` keeps the record it was handed on `Workout.raw`, untouched and in
 whichever of the two shapes it arrived in. That field exists for the export and for
@@ -206,6 +207,43 @@ nothing else: the upstream shape is undocumented and carries fields this model d
 not name, so a normalized-only export would get quietly worse every time the
 platform adds one. Do not read `raw` to dodge the normalized model — that is what
 `camelizeWorkout` is for.
+
+### Two ids, not one
+
+**A record carries `workoutId` *and* `id`, and they are not the same value.** The
+site's own `/workouts/:id` links are built from **`id`**; `workoutId` is what names
+the ride everywhere else, including this repo's fixture filenames and the export.
+
+Read live from the API on 12 Sep 2026, across one account's 45 records:
+
+| | n | |
+|---|---|---|
+| `id` == `workoutId` | 20 | every ride from **13 Aug 2026** onwards |
+| `id` != `workoutId` | 25 | every ride **before** that date |
+
+The cutover is clean — there is no ride on either side of 13 Aug that breaks it — so
+the platform changed how it mints records and older rides kept their original pair.
+An example pair, the 12 Aug ride that is also `fixtures/raw-6a7cab8c…`:
+`workout_id` `6a7cab8cc23a154bebccef65`, `id` `6a7cabca18b66a215bd6d6ad`, and the
+site links it as `/workouts/6a7cabca18b66a215bd6d6ad`.
+
+**This was a real bug, and the shape of it is worth remembering.** Reading only
+`workoutId` made every ride older than 13 Aug unreachable: *Load full history*
+fetched all 45 records, the URL's id matched none of them, and the view told the user
+their own workout was not in their own history. The whole history was in hand; only
+the key was wrong. Nothing in the cached week could catch it, because there the two
+ids happen to agree — and six older fixtures carry no `id` at all, having been
+captured before the platform mirrored it into the blob.
+
+So: **`Workout` carries both.** `id` is `workoutId`, `routeId` is the record's `id`
+(falling back to `workoutId` where there is none), and **anything resolving a URL
+must go through `findWorkout`**, which tries `routeId` first and `id` second. The two
+id spaces do not collide: all 45 `workoutId`s and all 45 `id`s were distinct, and no
+value appeared in both roles. `cachedMachineType` matches the same way, in both key
+styles, because `renderRoute` hands it a URL segment.
+
+`toWorkout` needs only one of the two to read a record, so a future shape that drops
+either one still parses.
 
 ### Interval sample (one per 10 s)
 

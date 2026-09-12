@@ -38,6 +38,12 @@ const RECUMBENT = "6a6368cb18e8655524dbb05d"; // 24 Jul, the only recumbent ride
 // 03 Sep, program 20. Captured from the API, so it is snake_case rather than the
 // camelCase of the cached blob, and it is not in persist-root.json.
 const API_SHAPED = "6a998daf8d2b6d09c6e334d2";
+// The same 12 Aug ride as PROGRAM_20, and the id the site's own link for it carries.
+// Read live from the API on 12 Sep 2026: `workout_id` and `id` are DIFFERENT values
+// on every ride that account recorded before 13 Aug 2026 — 25 of its 45 — and it is
+// `id` that the /workouts/:id URL uses. The cached fixture predates the platform
+// mirroring `id` into the blob, so the pairing is restored here rather than invented.
+const PROGRAM_20_ROUTE_ID = "6a7cabca18b66a215bd6d6ad";
 
 const storage = (value: string | null): ReadableStorage => ({
   getItem: (key) => (key === PERSIST_KEY ? value : null),
@@ -526,6 +532,66 @@ describe("a Sprint 8 record from after the upstream shape changed", () => {
   });
 });
 
+describe("the two ids one record carries", () => {
+  /*
+   * A ride is named by `workoutId` but linked by `id`, and before 13 Aug 2026 those
+   * are different values. Reading only `workoutId` is what made every ride older
+   * than that unreachable: the API returned all 45 records, the URL's id matched
+   * none of them, and the view reported the workout as missing from the user's own
+   * history. The ids do not collide — across those 45 records all 45 `workoutId`s
+   * and all 45 `id`s were distinct, and no value appeared in both roles.
+   */
+  const record = JSON.parse(fixture(`raw-${PROGRAM_20}.json`)) as Record<string, unknown>;
+  const linked = { ...record, id: PROGRAM_20_ROUTE_ID };
+
+  it("keeps both, and does not confuse one for the other", () => {
+    const workout = toWorkout(linked);
+    expect(workout.id).toBe(PROGRAM_20);
+    expect(workout.routeId).toBe(PROGRAM_20_ROUTE_ID);
+    expect(workout.routeId).not.toBe(workout.id);
+  });
+
+  it("finds the workout by the id its URL actually carries", () => {
+    expect(findWorkout([toWorkout(linked)], PROGRAM_20_ROUTE_ID)!.id).toBe(PROGRAM_20);
+  });
+
+  it("still finds it by workoutId, which is what fixtures and exports name", () => {
+    expect(findWorkout([toWorkout(linked)], PROGRAM_20)!.routeId).toBe(PROGRAM_20_ROUTE_ID);
+  });
+
+  it("picks the record whose route id matches, not another whose workoutId does", () => {
+    const decoy = toWorkout({ ...record, workoutId: PROGRAM_20_ROUTE_ID, id: "decoy" });
+    expect(findWorkout([decoy, toWorkout(linked)], PROGRAM_20_ROUTE_ID)!.id).toBe(PROGRAM_20);
+  });
+
+  it("falls back to workoutId on a record that carries no id at all", () => {
+    // Six fixtures are like this, captured before the platform sent `id`.
+    expect(record["id"]).toBeUndefined();
+    expect(toWorkout(record).routeId).toBe(PROGRAM_20);
+  });
+
+  it("reads a record that carries only id, rather than rejecting it", () => {
+    // Not observed upstream, but the shape moves without notice and one identifier
+    // is enough to name a ride.
+    const workout = toWorkout({ id: "only-id", workoutTime: "2026-01-01T00:00:00Z" });
+    expect(workout.id).toBe("only-id");
+    expect(workout.routeId).toBe("only-id");
+  });
+
+  it("still refuses a record with no identifier at all", () => {
+    expect(() => toWorkout({ workoutTime: "2026-01-01T00:00:00Z" })).toThrow(WorkoutParseError);
+  });
+
+  it("reads the API's snake_case spelling of both", () => {
+    const api = JSON.parse(fixture(`raw-${API_SHAPED}.json`)) as Record<string, unknown>;
+    expect(api["workout_id"]).toBe(API_SHAPED);
+    expect(api["id"]).toBe(API_SHAPED);
+    const workout = toWorkout({ ...api, id: PROGRAM_20_ROUTE_ID });
+    expect(workout.id).toBe(API_SHAPED);
+    expect(workout.routeId).toBe(PROGRAM_20_ROUTE_ID);
+  });
+});
+
 describe("machine scope", () => {
   it("renders both bike types, because the account contains both", () => {
     expect(isSupportedMachine("upright_bike")).toBe(true);
@@ -587,6 +653,17 @@ describe("machine scope", () => {
         userStore: JSON.stringify({ workouts: [{ workoutId: "bare" }] }),
       });
       expect(cachedMachineType(blob, "bare")).toBeNull();
+    });
+
+    it("resolves a cached record by the id its URL carries", () => {
+      // Same divergence as everywhere else: renderRoute hands this a URL segment.
+      const blob = JSON.stringify({
+        userStore: JSON.stringify({
+          workouts: [{ workoutId: "named", id: "linked", machineType: "rower" }],
+        }),
+      });
+      expect(cachedMachineType(blob, "linked")).toBe("rower");
+      expect(cachedMachineType(blob, "named")).toBe("rower");
     });
 
     it("reads the API's snake_case spelling too", () => {
