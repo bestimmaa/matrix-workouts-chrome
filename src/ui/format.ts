@@ -48,6 +48,7 @@ export function modeLabel(mode: string, programType: number | null): string {
     target_heart_rate: "Target heart rate",
     target_watts: "Target watts",
     fitness_test: "Fitness test",
+    virtual_active: "Virtual Active",
   };
   const name = known[mode];
   if (name) return name;

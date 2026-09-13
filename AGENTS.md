@@ -49,7 +49,7 @@ crosshair is inert there; it needs the live listeners.
 
 ## Status
 
-Built, 166 tests green: the parse layer (`src/parse/`), the chart geometry layer
+Built, 168 tests green: the parse layer (`src/parse/`), the chart geometry layer
 (`src/charts/`), the view (`src/ui/`), and the MV3 content script (`src/content/`).
 The extension loads, puts its pill on `/workouts/:id`, and renders every fixture in
 both themes once that pill is used.
@@ -270,16 +270,16 @@ mode marker, and **the web app itself never reads it**: `programType` appears ex
 once in the whole app bundle, in the schema. The app detects a Sprint 8 ride
 structurally, by the presence of `sprintScores`. Do the same.
 
-Observed across one account's 43 workouts:
+Observed across one account's 44 workouts:
 
 | `programType` | n | Mode | Extra fields |
 |---|---|---|---|
 | 46 | 27 | Target heart rate — *confirmed* | — |
 | 18 | 7 | **Sprint 8** (HIIT) — *confirmed* | `sprintScores`, `totalSweatScore`, `sprint8ProgramLevel` |
 | 20 | 4 | **Target watts** (constant power) — *confirmed* | — |
+| 47 | 3 | **Virtual Active** (scenic route) — *confirmed* | — |
 | 38 | 1 | **Fitness test** (console VO₂ / Cooper) — *confirmed* | — |
 | 0 | 2 | *unidentified* | — |
-| 47 | 2 | *unidentified* | — |
 
 ### How the mapping was established
 
@@ -299,11 +299,23 @@ Matching a ride's date and duration against that log identifies its mode directl
   the series shows eight power stages at a fixed resistance.
 - **46 = target heart rate**, corroborated by entries naming the mode outright
   ("Relaxed Zone 2 ride in Target HR mode", "Target HR was 139").
+- **47 = Virtual Active**, the console's scenic-route mode: the video's terrain
+  drives resistance and the rider answers it with cadence. Reported by the rider
+  off the console for the 2026-09-13 ride — 2403 s, 20.37 km, 144.8 W mean, 241
+  samples, `id` `6aa67d338d2b6d09c6412d7b`. That is one confirmed ride naming an
+  id, the same standard that pinned 38.
 
-**0 and 47 are still open.** Their rides appear in the log but no entry names a
-console mode. Program 0 is plausibly manual / quick-start — that is the usual console
-convention for id 0, and both rides are short unstructured efforts — but convention
-is not evidence, so it stays `"unknown"`.
+**What 47 buys and what it does not.** The other two program-47 rides (17 Aug, 3 min;
+and a 21 min one) inherit the name **by id**, with no confirmation of their own, and
+that is the whole basis for calling them Virtual Active. Do not go looking for
+corroboration in the series: both 47 rides open `1, 4, 4, 4, …`, which reads like a
+signature right up until you check `raw-6aa04566…` — a program 46 — which opens
+`1, 4, 4` as well.
+
+**0 is still open.** Its rides appear in the log but no entry names a console mode.
+Program 0 is plausibly manual / quick-start — that is the usual console convention
+for id 0, and both rides are short unstructured efforts — but convention is not
+evidence, so it stays `"unknown"`.
 
 ### A rejected heuristic — do not re-derive it
 
@@ -312,7 +324,7 @@ Detecting watt-target rides from the data alone looks feasible on a small sample
 program 20 scores 0.50–0.76, but three of the 24 program-46 rides score 0.51–0.72.
 Any threshold misclassifies them. Use `programType` for this distinction.
 
-Measured across all 43 rides, the **mean magnitude of a resistance change** does
+Measured across all 44 rides, the **mean magnitude of a resistance change** does
 separate the control loops — how far the level moves each time it moves:
 
 | Program | rides | duration | change rate /100 | **mean step** | reading |
@@ -322,14 +334,25 @@ separate the control loops — how far the level moves each time it moves:
 | 38 | 1 | 15 min | **0** | **0** | resistance pinned at 1, power a clean 35→280 W staircase |
 | 20 | 4 | 46–60 min | 6–13 | 1.43–3.10 | infrequent changes; the console holds a wattage, so resistance only moves as cadence drifts |
 | 0 | 2 | 10, 31 min | 18–30 | 1.64–3.09 | — |
-| 47 | 2 | 3, 21 min | 5–34 | 2.54–3.00 | — |
+| 47 | 3 | 3–40 min | 5–34 | **1.73–3.00** | terrain-driven: long plateaus, occasional steps |
 
 Note what this does and does not buy you: it cleanly isolates 46 (single-level
 nudging), 18 (big swings) and 38 (no movement at all), but 0, 20 and 47 overlap each
 other and overlap 46. The log, not the telemetry, is what pinned 20.
 
-To close 0 and 47: ride each once and read the mode off the console, then add a row
-to the training log so the next session can match it.
+**And the overlap got worse, not better, as the sample grew.** The 13 Sep Virtual
+Active ride — the longest program 47 by a wide margin at 40 min — scores a mean step
+of 1.73 over 22 changes in 241 samples, against the 2.54–3.00 the two short 47 rides
+had shown. Its resistance sits on long plateaus — run-length encoded, the ride opens
+`1x1 4x13 5x1 7x1 8x1 9x46 11x50 10x15 11x6 8x50` before breaking up into shorter
+runs — so a handful of single-level transitions *into* and *out of* each plateau drag
+the mean step down toward 46's 1.01–1.44 band, even though a 46 and this ride look
+nothing alike: one nudges constantly, the other holds a level for eight minutes. A metric that
+moved this much on one more ride was never going to hold a threshold. This is the
+second independent reason not to derive the mode from telemetry.
+
+To close 0: ride it once and read the mode off the console, then add a row to the
+training log so the ride can be matched.
 
 ### Prefer the derived control signature over the program id
 
@@ -836,7 +859,7 @@ Use it when changing anything about heart-rate filtering.
 | `6a95b033…` | **18 Sprint 8** | 121 | the only structural variant; sprint scores, 400 W spikes, resistance 23 |
 | `6aa2d8a8…` | **18 Sprint 8** | 121 | **the post-change shape**: `sprintScores` and `totalSweatScore`, but *neither* level field. The only fixture exercising `sprint8ProgramLevel ?? programLevel` with both absent — which is now the only case that occurs |
 | `6a941332…` | 0 | 61 | unidentified program |
-| `6a8336b6…` | 47 | 19 | shortest ride — guards off-by-one on tiny series |
+| `6a8336b6…` | **47 Virtual Active** | 19 | shortest ride — guards off-by-one on tiny series |
 | `6a7cab8c…` | 20 target watts | 277 | the confirmed watt-target ride |
 | `6a6368cb…` | 46 | 376 | **recumbent** — the only non-upright ride; strap dead for 215 samples; final sample `duration: 8` |
 | `6a5e4fe4…` | 38 | 89 | resistance pinned at 1 while power ramps — breaks the "power follows resistance" assumption |

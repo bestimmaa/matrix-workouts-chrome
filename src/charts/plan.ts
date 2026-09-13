@@ -100,6 +100,12 @@ function orderKey(workout: Workout, control: ControlSignature): { key: string; r
   }
   if (workout.mode === "target_watts") return { key: "target_watts", reason: "target watts — the console held a wattage" };
   if (workout.mode === "target_heart_rate") return { key: "target_heart_rate", reason: "target heart rate — the console chased a bpm" };
+  // Virtual Active takes the default order deliberately. The route's terrain drives
+  // resistance and the rider answers it with cadence, so neither is obviously the
+  // channel to lead with, and inventing an order would be a guess dressed as a
+  // finding. It is named here only so the caption stops claiming the mode is
+  // unidentified, which it no longer is.
+  if (workout.mode === "virtual_active") return { key: "default", reason: "Virtual Active — the route's terrain drove resistance" };
   return { key: "default", reason: "no console mode identified — showing the default order" };
 }
 

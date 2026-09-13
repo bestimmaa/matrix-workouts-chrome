@@ -36,9 +36,10 @@ rather than a task belongs in AGENTS.md instead.
       place for it. See "The export format" in AGENTS.md for the shape a multi-workout
       file should extend rather than replace.
 
-- [ ] **Programs 0 and 47 are still unidentified.** Ride each once and read the mode
-      off the console, then add a row to the training log so the ride can be matched.
-      This is a rider task, not a code task. See "Program modes" in AGENTS.md.
+- [ ] **Program 0 is still unidentified.** Ride it once and read the mode off the
+      console, then add a row to the training log so the ride can be matched. This is
+      a rider task, not a code task. Program 47 was closed this way on 13 Sep 2026 —
+      it is Virtual Active. See "Program modes" in AGENTS.md.
 
 ## Views
 

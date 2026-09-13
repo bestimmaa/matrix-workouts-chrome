@@ -21,7 +21,8 @@ const load = (id: string): Workout => toWorkout(raw(id));
 const TARGET_HR_CLEAN = "6aa045668d2b6d09c612785d"; // 08 Sep, strap clean throughout
 const TARGET_HR_DROPOUTS = "6aa194a08d2b6d09c61e9500"; // 09 Sep, 80 dropouts
 const SPRINT_8 = "6a95b033c23a154beb856bce";
-const PROGRAM_47 = "6a8336b68d2b6d09c634fc60"; // unmapped program, 19 samples
+const PROGRAM_47 = "6a8336b68d2b6d09c634fc60"; // program 47 Virtual Active, 19 samples
+const PROGRAM_0 = "6a9413328d2b6d09c6b512a9"; // program 0, the last id still unmapped
 // Captured from the API, so it is snake_case where every other fixture is camelCase.
 const API_SHAPED = "6a998daf8d2b6d09c6e334d2";
 
@@ -117,9 +118,15 @@ describe("workoutExport", () => {
   });
 
   it("keeps the raw program id beside our name for it, and never guesses", () => {
-    const unmapped = workoutExport(load(PROGRAM_47), AT).workout;
-    expect(unmapped.programType).toBe(47);
+    const unmapped = workoutExport(load(PROGRAM_0), AT).workout;
+    expect(unmapped.programType).toBe(0);
     expect(unmapped.mode).toBe("unknown");
+
+    // A named id still exports the number it was named from, so a reader can
+    // disagree with the name without losing what it was derived from.
+    const named = workoutExport(load(PROGRAM_47), AT).workout;
+    expect(named.programType).toBe(47);
+    expect(named.mode).toBe("virtual_active");
 
     const sprint = workoutExport(load(SPRINT_8), AT).workout;
     expect(sprint.mode).toBe("sprint_8");

@@ -31,7 +31,7 @@ const SPRINT_8 = "6a95b033c23a154beb856bce"; // 31 Aug, HIIT
 // changed: it carries `id`, and neither `sprint8ProgramLevel` nor `programLevel`.
 const SPRINT_8_NO_LEVEL = "6aa2d8a88d2b6d09c62953f0";
 const PROGRAM_0 = "6a9413328d2b6d09c6b512a9"; // 30 Aug, program 0
-const PROGRAM_47 = "6a8336b68d2b6d09c634fc60"; // 17 Aug, program 47, only 19 samples
+const PROGRAM_47 = "6a8336b68d2b6d09c634fc60"; // 17 Aug, program 47 Virtual Active, only 19 samples
 const PROGRAM_20 = "6a7cab8cc23a154bebccef65"; // 12 Aug, program 20
 const PROGRAM_38 = "6a5e4fe418e8655524aebab4"; // 20 Jul, program 38, constant resistance
 const RECUMBENT = "6a6368cb18e8655524dbb05d"; // 24 Jul, the only recumbent ride
@@ -203,17 +203,24 @@ it("names the modes confirmed against the rider's training log", () => {
     expect(programMode(38)).toBe("fitness_test");
   });
 
+  // Reported off the console for the 13 Sep 2026 ride. The 17 Aug fixture is a
+  // program 47 too and so inherits the name, which is the point of asserting it
+  // on the fixture and not only on the id.
+  it("names Virtual Active, confirmed off the console", () => {
+    expect(programMode(47)).toBe("virtual_active");
+  });
+
   it("does not guess at the ids nothing confirms", () => {
-    for (const id of [0, 47]) expect(programMode(id)).toBe("unknown");
+    expect(programMode(0)).toBe("unknown");
     expect(programMode(null)).toBe("unknown");
   });
 
-  it("tags the watt-target and fitness-test fixtures", () => {
+  it("tags the watt-target, fitness-test and Virtual Active fixtures", () => {
     const all = loadCachedWorkouts(storage(PERSIST_BLOB));
     expect(findWorkout(all, PROGRAM_20)!.mode).toBe("target_watts");
     expect(findWorkout(all, PROGRAM_38)!.mode).toBe("fitness_test");
+    expect(findWorkout(all, PROGRAM_47)!.mode).toBe("virtual_active");
     expect(findWorkout(all, PROGRAM_0)!.mode).toBe("unknown");
-    expect(findWorkout(all, PROGRAM_47)!.mode).toBe("unknown");
   });
 
   it("classifies the fitness test as power-controlled from the data alone", () => {

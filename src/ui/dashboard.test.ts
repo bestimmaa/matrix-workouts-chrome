@@ -43,9 +43,11 @@ describe("format", () => {
   });
 
   it("shows an unmapped program as its raw id rather than guessing", () => {
-    expect(modeLabel("unknown", 47)).toBe("Program 47");
+    // 0 is the last id still unmapped; 47 was named Virtual Active on 13 Sep 2026.
+    expect(modeLabel("unknown", 0)).toBe("Program 0");
     expect(modeLabel("unknown", null)).toBe("Unidentified program");
     expect(modeLabel("target_watts", 20)).toBe("Target watts");
+    expect(modeLabel("virtual_active", 47)).toBe("Virtual Active");
   });
 
   it("splits a duration into the value/unit pairs the site's tiles use", () => {

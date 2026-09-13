@@ -170,6 +170,16 @@ describe("planWorkout", () => {
     expect(new Set(resistance!.values).size).toBe(1);
   });
 
+  // The caption is the only place the ordering explains itself, so a named mode
+  // must not still be described as unidentified. SHORTEST is the 17 Aug program 47.
+  it("says Virtual Active drove the resistance rather than claiming no mode", () => {
+    const plan = planWorkout(fixture(SHORTEST));
+    expect(plan.headlineReason).toMatch(/Virtual Active/);
+    expect(plan.headlineReason).not.toMatch(/no console mode/);
+    // It still takes the default order — naming the mode changed the caption only.
+    expect(plan.headline).toBe("power");
+  });
+
   it("leads with power on Sprint 8 and keeps cadence second", () => {
     const workout = fixture(SPRINT_8);
     const plan = planWorkout(workout);
