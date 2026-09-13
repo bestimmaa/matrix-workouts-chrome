@@ -32,6 +32,8 @@ const SPRINT_8 = "6a95b033c23a154beb856bce"; // 31 Aug, HIIT
 const SPRINT_8_NO_LEVEL = "6aa2d8a88d2b6d09c62953f0";
 const PROGRAM_0 = "6a9413328d2b6d09c6b512a9"; // 30 Aug, program 0
 const PROGRAM_47 = "6a8336b68d2b6d09c634fc60"; // 17 Aug, program 47 Virtual Active, only 19 samples
+// 13 Sep, the ride the rider named Virtual Active off the console.
+const VIRTUAL_ACTIVE = "6aa67d338d2b6d09c6412d7b";
 const PROGRAM_20 = "6a7cab8cc23a154bebccef65"; // 12 Aug, program 20
 const PROGRAM_38 = "6a5e4fe418e8655524aebab4"; // 20 Jul, program 38, constant resistance
 const RECUMBENT = "6a6368cb18e8655524dbb05d"; // 24 Jul, the only recumbent ride
@@ -51,7 +53,7 @@ const storage = (value: string | null): ReadableStorage => ({
 
 describe("persisted blob", () => {
   it("parses the double-encoded store (values are JSON strings)", () => {
-    expect(extractRawWorkouts(PERSIST_BLOB)).toHaveLength(9);
+    expect(extractRawWorkouts(PERSIST_BLOB)).toHaveLength(10);
   });
 
   it("tolerates a slice that is already an object", () => {
@@ -79,8 +81,8 @@ describe("persisted blob", () => {
   it("loads and sorts cached workouts newest first", () => {
     const loaded = loadCachedWorkouts(storage(PERSIST_BLOB));
     expect(loaded.map((w) => w.id)).toEqual([
-      SPRINT_8_NO_LEVEL, TARGET_HR_DROPOUTS, TARGET_HR_CLEAN, SPRINT_8, PROGRAM_0,
-      PROGRAM_47, PROGRAM_20, RECUMBENT, PROGRAM_38,
+      VIRTUAL_ACTIVE, SPRINT_8_NO_LEVEL, TARGET_HR_DROPOUTS, TARGET_HR_CLEAN, SPRINT_8,
+      PROGRAM_0, PROGRAM_47, PROGRAM_20, RECUMBENT, PROGRAM_38,
     ]);
   });
 });
@@ -220,6 +222,7 @@ it("names the modes confirmed against the rider's training log", () => {
     expect(findWorkout(all, PROGRAM_20)!.mode).toBe("target_watts");
     expect(findWorkout(all, PROGRAM_38)!.mode).toBe("fitness_test");
     expect(findWorkout(all, PROGRAM_47)!.mode).toBe("virtual_active");
+    expect(findWorkout(all, VIRTUAL_ACTIVE)!.mode).toBe("virtual_active");
     expect(findWorkout(all, PROGRAM_0)!.mode).toBe("unknown");
   });
 
@@ -238,11 +241,31 @@ it("names the modes confirmed against the rider's training log", () => {
     expect(sig.meanStep).toBeGreaterThan(4);
   });
 
+  /**
+   * AGENTS.md argues from this ride's numbers that the resistance-step metric does
+   * not hold a threshold, so the numbers it quotes need something checking them.
+   * They are asserted exactly, not loosely: if a parse change moves them, the prose
+   * is what has to be corrected.
+   */
+  it("pins the Virtual Active ride's resistance metrics, which the docs argue from", () => {
+    const ride = findWorkout(loadCachedWorkouts(storage(PERSIST_BLOB)), VIRTUAL_ACTIVE)!;
+    const sig = controlSignature(ride.samples);
+    expect(ride.samples).toHaveLength(241);
+    expect(sig.changes).toBe(22);
+    expect(sig.meanStep).toBeCloseTo(1.73, 2);
+    expect(sig.changeRate).toBeCloseTo(9.1, 1);
+    expect([sig.minLevel, sig.maxLevel]).toEqual([1, 11]);
+    // The mean step lands just above target-HR's 1.01-1.44 band while the ride
+    // holds a level for minutes at a time, which is the whole point: the metric
+    // separates these two far less than the band suggests.
+    expect(sig.meanStep).toBeGreaterThan(1.44);
+  });
+
   it("declines to classify the modes that overlap", () => {
     // Target-HR and the unidentified programs share a signature band; the
     // classifier must say so rather than invent a distinction.
     const all = loadCachedWorkouts(storage(PERSIST_BLOB));
-    for (const id of [TARGET_HR_CLEAN, TARGET_HR_DROPOUTS, PROGRAM_20, PROGRAM_0, PROGRAM_47]) {
+    for (const id of [TARGET_HR_CLEAN, TARGET_HR_DROPOUTS, PROGRAM_20, PROGRAM_0, PROGRAM_47, VIRTUAL_ACTIVE]) {
       expect(controlSignature(findWorkout(all, id)!.samples).mode).toBe("unclassified");
     }
   });

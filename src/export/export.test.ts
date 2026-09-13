@@ -23,6 +23,7 @@ const TARGET_HR_DROPOUTS = "6aa194a08d2b6d09c61e9500"; // 09 Sep, 80 dropouts
 const SPRINT_8 = "6a95b033c23a154beb856bce";
 const PROGRAM_47 = "6a8336b68d2b6d09c634fc60"; // program 47 Virtual Active, 19 samples
 const PROGRAM_0 = "6a9413328d2b6d09c6b512a9"; // program 0, the last id still unmapped
+const VIRTUAL_ACTIVE = "6aa67d338d2b6d09c6412d7b"; // 13 Sep, the confirmed Virtual Active ride
 // Captured from the API, so it is snake_case where every other fixture is camelCase.
 const API_SHAPED = "6a998daf8d2b6d09c6e334d2";
 
@@ -37,6 +38,7 @@ const ALL = [
   "6a5e4fe418e8655524aebab4",
   "6aa2d8a88d2b6d09c62953f0",
   API_SHAPED,
+  VIRTUAL_ACTIVE,
 ];
 
 const AT = new Date("2026-09-11T09:30:00.000Z");

@@ -49,7 +49,7 @@ crosshair is inert there; it needs the live listeners.
 
 ## Status
 
-Built, 168 tests green: the parse layer (`src/parse/`), the chart geometry layer
+Built, 169 tests green: the parse layer (`src/parse/`), the chart geometry layer
 (`src/charts/`), the view (`src/ui/`), and the MV3 content script (`src/content/`).
 The extension loads, puts its pill on `/workouts/:id`, and renders every fixture in
 both themes once that pill is used.
@@ -836,7 +836,7 @@ This handles personal health data.
 **Vitest**, unit tests against `fixtures/`. All fixtures are **real captured
 records** — do not "clean" them, the mess is the point.
 
-`fixtures/persist-root.json` is a synthetic `localStorage` blob wrapping nine of the
+`fixtures/persist-root.json` is a synthetic `localStorage` blob wrapping ten of the
 real records in the true double-encoded shape; it is what the parser tests load.
 Each `raw-<workoutId>.json` is one record, with a `.csv` of the same series beside
 it for eyeballing.
@@ -860,6 +860,7 @@ Use it when changing anything about heart-rate filtering.
 | `6aa2d8a8…` | **18 Sprint 8** | 121 | **the post-change shape**: `sprintScores` and `totalSweatScore`, but *neither* level field. The only fixture exercising `sprint8ProgramLevel ?? programLevel` with both absent — which is now the only case that occurs |
 | `6a941332…` | 0 | 61 | unidentified program |
 | `6a8336b6…` | **47 Virtual Active** | 19 | shortest ride — guards off-by-one on tiny series |
+| `6aa67d33…` | **47 Virtual Active** | 241 | the ride that *named* program 47. 40 min of terrain-driven resistance — long plateaus, 22 changes, mean step 1.73 — which is the counter-example the resistance-step section argues from |
 | `6a7cab8c…` | 20 target watts | 277 | the confirmed watt-target ride |
 | `6a6368cb…` | 46 | 376 | **recumbent** — the only non-upright ride; strap dead for 215 samples; final sample `duration: 8` |
 | `6a5e4fe4…` | 38 | 89 | resistance pinned at 1 while power ramps — breaks the "power follows resistance" assumption |
@@ -867,6 +868,15 @@ Use it when changing anything about heart-rate filtering.
 
 Between them these cover every `programType` in the account (0, 18, 20, 38, 46, 47),
 both bike types, and both sides of the upstream shape change.
+
+**`6aa67d33…` was captured by reading `localStorage` directly**, not through the
+export, and the record is byte-identical to what was in the blob — verified by
+length and two independent checksums computed on both sides before it was written.
+Worth knowing for the next capture: `root.userStore` was the *already-parsed object*
+shape that time, so `JSON.stringify`-ing it to pull the record out would have
+silently normalized any whole-number float. Extract from the `localStorage` string
+itself. This record happens to carry no `.0` values — checked, not assumed — so the
+pretty-printed fixture round-trips back to those exact bytes.
 
 **`6aa2d8a8…` was captured through the extension's own export**, which is what that
 feature was for — but note the capture route matters and the file records which one

@@ -22,6 +22,9 @@ const SHORTEST = "6a8336b68d2b6d09c634fc60";
 const RECUMBENT = "6a6368cb18e8655524dbb05d";
 // Sprint 8 captured after the upstream shape change; no program-level fields.
 const SPRINT_8_NO_LEVEL = "6aa2d8a88d2b6d09c62953f0";
+// 13 Sep: 40 min of Virtual Active, the longest program 47 and the one the
+// rider confirmed off the console.
+const VIRTUAL_ACTIVE = "6aa67d338d2b6d09c6412d7b";
 
 describe("linearScale", () => {
   it("maps domain onto range and back", () => {
@@ -207,7 +210,7 @@ describe("planWorkout", () => {
   it("does not plot speed beside power on a bike", () => {
     // Speed is the console's own function of power and cadence here: a third view
     // of the same thing, and it would have to borrow power's palette slot.
-    for (const id of [TARGET_HR_CLEAN, SPRINT_8, RAMP_TEST, TARGET_WATTS, RECUMBENT, SPRINT_8_NO_LEVEL]) {
+    for (const id of [TARGET_HR_CLEAN, SPRINT_8, RAMP_TEST, TARGET_WATTS, RECUMBENT, SPRINT_8_NO_LEVEL, VIRTUAL_ACTIVE]) {
       const keys = planWorkout(fixture(id)).panels.map((s) => s.key);
       expect(keys, id).toContain("power");
       expect(keys, id).not.toContain("speed");
@@ -215,7 +218,7 @@ describe("planWorkout", () => {
   });
 
   it("assigns each channel its own palette slot", () => {
-    for (const id of [TARGET_HR_DROPOUTS, TARGET_HR_CLEAN, SPRINT_8, RAMP_TEST, TARGET_WATTS, SHORTEST, RECUMBENT, SPRINT_8_NO_LEVEL]) {
+    for (const id of [TARGET_HR_DROPOUTS, TARGET_HR_CLEAN, SPRINT_8, RAMP_TEST, TARGET_WATTS, SHORTEST, RECUMBENT, SPRINT_8_NO_LEVEL, VIRTUAL_ACTIVE]) {
       const slots = planWorkout(fixture(id)).panels.map((s) => s.colorVar);
       expect(new Set(slots).size, id).toBe(slots.length);
     }
@@ -228,7 +231,7 @@ describe("planWorkout", () => {
   });
 
   it("labels every non-zero baseline", () => {
-    for (const id of [TARGET_HR_CLEAN, SPRINT_8, RAMP_TEST, RECUMBENT]) {
+    for (const id of [TARGET_HR_CLEAN, SPRINT_8, RAMP_TEST, RECUMBENT, VIRTUAL_ACTIVE]) {
       for (const panel of planWorkout(fixture(id)).panels) {
         if (!panel.zeroBaseline) expect(panel.note, `${id} ${panel.key}`).toBeTruthy();
       }
@@ -244,7 +247,7 @@ describe("planWorkout", () => {
   });
 
   it("produces no NaN geometry for any fixture", () => {
-    for (const id of [TARGET_HR_DROPOUTS, TARGET_HR_CLEAN, SPRINT_8, RAMP_TEST, TARGET_WATTS, SHORTEST, RECUMBENT, SPRINT_8_NO_LEVEL]) {
+    for (const id of [TARGET_HR_DROPOUTS, TARGET_HR_CLEAN, SPRINT_8, RAMP_TEST, TARGET_WATTS, SHORTEST, RECUMBENT, SPRINT_8_NO_LEVEL, VIRTUAL_ACTIVE]) {
       const plan = planWorkout(fixture(id));
       const x = elapsedScale(plan.elapsedSeconds);
       for (const panel of plan.panels) {
