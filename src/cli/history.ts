@@ -18,10 +18,10 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-const { loginWithXid } = await import("../src/api/login.js");
-const { fetchWorkoutHistory, workoutsUrl, ApiError } = await import("../src/api/client.js");
-const { workoutExport, exportFilename } = await import("../src/export/document.js");
-const { toWorkout } = await import("../src/parse/workout.js");
+import { loginWithXid } from "../api/login.js";
+import { fetchWorkoutHistory, workoutsUrl, ApiError } from "../api/client.js";
+import { workoutExport, exportFilename } from "../export/document.js";
+import { toWorkout } from "../parse/workout.js";
 
 /**
  * Read `.env` without taking on a dependency for it. Deliberately minimal: `KEY=value`,

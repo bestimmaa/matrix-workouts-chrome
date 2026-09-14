@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite-node scripts/preview.ts --",
-    "history": "vite-node scripts/history.ts --"
+    "history": "vite-node src/cli/history.ts --"
   },
   "devDependencies": {
     "@types/jsdom": "^30.0.0",

@@ -31,7 +31,7 @@ rather than a task belongs in AGENTS.md instead.
 
 - [ ] **Export the whole history from inside the extension.** Done outside it:
       `npm run history -- --split` writes every ride as an export document, and
-      `scripts/history.ts` signs in on its own. What is still missing is a way to do it
+      `src/cli/history.ts` signs in on its own. What is still missing is a way to do it
       *in the browser*, where the token is already there and no passcode is involved —
       the per-workout *Export JSON* button still covers only the ride on screen. Pairs
       with the cross-ride views below; the same button on a list page is the natural

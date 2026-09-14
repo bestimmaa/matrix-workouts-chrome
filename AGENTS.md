@@ -110,7 +110,7 @@ crosshair is inert there; it needs the live listeners.
 
 ## Status
 
-Built, 179 tests green: the parse layer (`src/parse/`), the chart geometry layer
+Built, the suite green: the parse layer (`src/parse/`), the chart geometry layer
 (`src/charts/`), the view (`src/ui/`), and the MV3 content script (`src/content/`).
 The extension loads, puts its pill on `/workouts/:id`, and renders every fixture in
 both themes once that pill is used.
@@ -123,7 +123,7 @@ Also built: **JSON export** (`src/export/`). The view's header carries an *Expor
 JSON* button that writes the whole record — normalized telemetry plus the upstream
 record verbatim — to a file. See "The export format" below.
 
-Also built: a **standalone client** (`scripts/history.ts`, `npm run history`) that
+Also built: a **standalone client** (`src/cli/history.ts`, `npm run history`) that
 signs in with an xid and passcode and downloads the whole history outside the
 browser. It shares the parse, client and export layers with the extension — the only
 new code is `src/api/login.ts`. **MATRIX_API.md** documents the API it speaks,
@@ -492,15 +492,24 @@ resistance as the driver of output is wrong there. Read the series, not the habi
 
 ## Architecture
 
+Four layers. Which layer a directory belongs to decides what it may touch, and
+`src/layers.test.ts` enforces it — see below.
+
 ```
 src/
-  content/     content script — detects the route, reads localStorage, mounts UI
-  parse/       localStorage blob -> typed Workout model (pure, no DOM)
-  charts/      SVG chart modules (pure: data + scale -> SVG element)
-  ui/          layout, readout console, stat tiles, icons, table view
-  api/         jfit HTTP client (credentials + history backfill), pure and DOM-free
-  export/      the JSON a user takes elsewhere (pure: Workout -> document)
-  background/  MV3 service worker: carries the one cross-origin request
+  core — no platform underneath it at all
+    parse/       localStorage blob or API record -> typed Workout model
+    charts/      chart geometry (data + scale -> path strings, ticks)
+    api/         jfit HTTP client (credentials + history backfill), over injected fetch
+    export/      the JSON a user takes elsewhere (Workout -> document)
+  view — DOM, and nothing more
+    ui/          layout, readout console, stat tiles, icons, table view
+  extension — DOM + chrome.* + the network
+    content/     content script — detects the route, reads localStorage, mounts UI
+    background/  MV3 service worker: carries the one cross-origin request
+  cli — node, for what runs outside a browser
+    cli/         standalone client: sign in, download the whole history to disk
+scripts/       dev tooling, not shipped and not a layer (see `npm run preview`)
 fixtures/      real captured workout records — see below
 ```
 
@@ -513,10 +522,12 @@ Decisions taken up front (revisit deliberately, don't drift):
 - **Hand-authored SVG charts, no runtime charting library.** See below.
 - **Zero runtime dependencies.** The whole bundle is 38 kB / 13 kB gzipped, ships
   as one IIFE, and makes no network request of any kind.
-- **`parse/`, `charts/` and `export/` stay pure and DOM-free** so they are
-  unit-testable against fixtures without a browser. Concretely: `charts/` emits *geometry* —
-  path `d` strings, tick positions, scales — and `ui/` turns that into elements.
-  Nothing under `charts/` may touch `document`.
+- **The core stays pure and platform-free** so it is unit-testable against fixtures
+  without a browser — and so anything else can consume it. Concretely: `charts/`
+  emits *geometry* — path `d` strings, tick positions, scales — and `ui/` turns that
+  into elements. Nothing in `parse/`, `charts/`, `api/` or `export/` may name
+  `document`, `chrome`, `fetch` or a `node:` module. This is a **test, not a
+  convention**: see "The layering" below.
 - The site is a React SPA: routes change **without a page load**. The content
   script must observe navigation, not just run once at `document_idle` — and see
   the isolated-world trap below, because the obvious way to do that does not work.
@@ -566,6 +577,43 @@ Decisions taken up front (revisit deliberately, don't drift):
   anywhere else (the jsdom preview) the stack falls through to the same
   `Rajdhani, "Helvetica Neue", Arial` the app itself declares. Naming a family costs
   no request; fetching one is what the rule forbids.
+
+
+### The layering, and why it is not four packages
+
+The four layers above are a real boundary, and `src/layers.test.ts` fails the build
+on a crossing: a platform global a layer is not allowed to name, an import that
+points the wrong way up the stack, a bare package import into a layer that is meant
+to stay dependency-free, or a new directory under `src/` that no layer claims.
+
+**Why a test rather than four npm packages.** The split is tempting and was
+considered. It buys compile-time enforcement of a rule that is not being broken, and
+publishability this repository has no use for yet; it costs workspaces, four
+manifests and tsconfigs, cross-package build ordering ahead of the two vite passes,
+and version bumps — to separate about five thousand lines with no runtime
+dependencies. The cut also lands in an awkward place: `scripts/preview.ts` renders
+the real dashboard under jsdom, so `ui/` would have to sit in the shared package
+too, leaving `extension` and `cli` as thin leaves. **Revisit when one of these is
+true, and not before:**
+
+- the CLI wants a runtime dependency the extension must not ship (an arg parser, a
+  real `.env` reader, a PDF writer) — today the answer is zero dependencies
+  everywhere, which is the only reason one manifest works;
+- a second JavaScript consumer appears that cannot live in this repo;
+- there is an actual reason to publish to npm. The repository is `private: true`,
+  and a package split with no publish target is cost without the payoff.
+
+**A consumer that is not JavaScript does not want a package anyway.** A phone app
+writing rides into HealthKit cannot import any of this. What it consumes is the
+export document, so *that* is the interface it depends on, and it is pinned in
+`src/export/contract.test.ts` — see "The export format".
+
+**`src/cli/` is shipped; `scripts/` is not.** They were one directory and should
+never have been: `src/cli/history.ts` is a user-facing tool that handles a passcode
+and is documented in README, while `scripts/preview.ts` is a development aid that
+renders fixtures to HTML. Only the first is a layer, only the first is bound by the
+rules above, and only the second is allowed to reach into `ui/` — which it does, on
+purpose, and which is exactly why it lives outside `src/`.
 
 ---
 
@@ -735,6 +783,25 @@ Four decisions in it, none of them arbitrary:
 
 `formatVersion` is for breaking changes only — adding an optional field does not
 need one.
+
+**This document is the interface for anyone outside this repository**, and the only
+one they get: a consumer written in another language — a phone app pushing rides
+into HealthKit, say — imports none of this code and decodes the JSON instead. It
+cannot be fixed by the commit that breaks it, so the shape is pinned in
+`src/export/contract.test.ts`: the exact set of key paths, and which fields may
+arrive null or absent. The tests in `export.test.ts` assert what the document
+*means* and would all still pass if `distanceMeters` were renamed tomorrow; this one
+is what makes that rename a decision instead of an accident. Adding a key means
+adding a line there. Renaming or removing one means bumping `formatVersion` and
+saying so here — the version number is the only warning a decoder already in the
+wild receives.
+
+The nullable list is taken from the **declarations, not the fixtures**. No fixture
+currently has a null `calories` or a null reported heart rate, but the type says
+both can be, and a decoder written against today's fixtures would break on the first
+ride where the strap was never paired. `source.record` is deliberately outside the
+contract: it is the upstream record verbatim, and pinning it would pin someone
+else's undocumented API.
 
 The filename is `matrix-workout-<YYYY-MM-DD>-<workoutId>.json`, dated from
 `workoutTime` in **UTC** rather than a localized rendering, so two machines exporting
@@ -973,6 +1040,19 @@ View tests (`src/ui/dashboard.test.ts`) run under `// @vitest-environment jsdom`
 cover the DOM: accessible labels, arrow-key scrubbing, the dropout readout, the
 sprint bars, the table row count. Note that jsdom rebases `import.meta.url` onto the
 document URL, so fixtures there must be resolved from `process.cwd()`.
+
+Two tests assert **structure rather than behaviour**, and both fail on a change no
+other test would notice:
+
+- `src/layers.test.ts` parses every source file with the TypeScript compiler and
+  checks the layering — see "The layering" above. It parses rather than greps on
+  purpose: every mention of `localStorage`, `chrome` or `fetch` in the core today is
+  inside a comment or a string (`parse/persist.ts` names the key in its error
+  messages; `api/client.ts` documents the global its `FetchLike` avoids), so a
+  textual scan flags all of them, gets switched off within the week, and protects
+  nothing.
+- `src/export/contract.test.ts` pins the exported key set and its nullability — see
+  "The export format". It is the only test that fails on a rename.
 
 ---
 
