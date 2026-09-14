@@ -29,10 +29,12 @@ rather than a task belongs in AGENTS.md instead.
 
 ## Data
 
-- [ ] **Export the whole history, not just the open ride.** The per-workout *Export
-      JSON* button covers the ride on screen; `fetchWorkoutHistory` already returns all
-      43 records and there is no way to get them out in one go. Pairs with the
-      cross-ride views below — the same button on a list page would be the natural
+- [ ] **Export the whole history from inside the extension.** Done outside it:
+      `npm run history -- --split` writes every ride as an export document, and
+      `scripts/history.ts` signs in on its own. What is still missing is a way to do it
+      *in the browser*, where the token is already there and no passcode is involved —
+      the per-workout *Export JSON* button still covers only the ride on screen. Pairs
+      with the cross-ride views below; the same button on a list page is the natural
       place for it. See "The export format" in AGENTS.md for the shape a multi-workout
       file should extend rather than replace.
 
@@ -43,10 +45,11 @@ rather than a task belongs in AGENTS.md instead.
 
 ## Views
 
-- [ ] **Use the history the API already returns.** `fetchWorkoutHistory` fetches all 43
-      workouts and we render exactly one of them. Nothing cross-ride exists yet: no
-      power curve, no sprint-to-sprint comparison, no resistance-vs-power drift over
-      months.
+- [ ] **Use the history the API already returns.** `fetchWorkoutHistory` fetches every
+      ride on the account and we render exactly one of them. Nothing cross-ride exists
+      yet: no power curve, no sprint-to-sprint comparison, no resistance-vs-power drift
+      over months. `npm run history` now puts the whole set on disk, so this can be
+      prototyped against real files before any of it goes near the extension.
 
 - [ ] **Replace the workout list page.** The site caches roughly the current week, so
       its own list cannot reach older rides and errors on them. Ours could, and it

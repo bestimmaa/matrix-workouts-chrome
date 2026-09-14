@@ -157,11 +157,14 @@ speed. That is the entire gap this project closes.
 ## Two shapes for the same data
 
 **The API returns `snake_case`; the browser's persisted blob returns `camelCase`** —
-including inside `intervals` (`average_distance` vs `averageDistance`). Always go
-through `camelizeWorkout()` rather than reading raw keys.
+including inside `intervals` (`average_distance` vs `averageDistance`).
 
 The API also carries four fields the cached blob does not: `program_id`,
 `program_level`, `workout_originator`, `integration_metadata`.
+
+That is the wire fact. The rule it implies for code in this repo — always go through
+`camelizeWorkout()`, never read raw keys — lives in AGENTS.md, which is where anyone
+writing against the parse layer will be looking.
 
 ---
 

@@ -61,7 +61,7 @@ crosshair is inert there; it needs the live listeners.
 
 ## Status
 
-Built, 169 tests green: the parse layer (`src/parse/`), the chart geometry layer
+Built, 179 tests green: the parse layer (`src/parse/`), the chart geometry layer
 (`src/charts/`), the view (`src/ui/`), and the MV3 content script (`src/content/`).
 The extension loads, puts its pill on `/workouts/:id`, and renders every fixture in
 both themes once that pill is used.
@@ -186,9 +186,9 @@ occurred." So any feature that reaches beyond the current week must go to the AP
 
 **The API returns `snake_case`; the persisted blob returns `camelCase`** — including
 inside `intervals` (`average_distance` vs `averageDistance`). `camelizeWorkout()`
-normalizes both into one code path; always go through it rather than reading raw
-keys. The API also carries four fields the cache does not: `program_id`,
-`program_level`, `workout_originator` and `integration_metadata`.
+normalizes both into one code path; **always go through it rather than reading raw
+keys.** That rule is the part that matters here; MATRIX_API.md carries the wire
+detail, including the four fields the API sends that the cache does not.
 
 ---
 
@@ -749,7 +749,7 @@ a linear scale, a 1/2/5 tick algorithm, and line/step/area path builders.
 that maths ever gets fiddly — but *only* those two. `d3-selection`, `d3-axis` and
 `d3-brush` are DOM-coupled and would break the purity rule above. **uPlot remains
 the escape hatch**, and the trigger for it is not a long ride: it is a full-history
-view (43 workouts x ~400 samples) with live zoom.
+view (every ride on the account x ~400 samples) with live zoom.
 
 ## The isolated-world trap — read before touching route detection
 
