@@ -17,7 +17,7 @@ const g = globalThis as unknown as { document: Document; window: unknown };
 g.document = dom.window.document;
 g.window = dom.window;
 
-const { toWorkout } = await import("../src/parse/workout.js");
+const { toWorkout } = await import("matrix-workouts-core");
 const { renderDashboard } = await import("../src/ui/dashboard.js");
 
 const styles = readFileSync(resolve(process.cwd(), "src/ui/styles.css"), "utf8");

@@ -3,9 +3,12 @@ import { LAYOUT, PANEL_HEIGHT, PLOT_BOTTOM } from "../charts/layout.js";
 import { nearestIndex } from "../charts/series.js";
 import { niceDomain, type LinearScale } from "../charts/scale.js";
 import { planWorkout } from "../charts/plan.js";
-import { heartRateStats } from "../parse/heartRate.js";
-import type { Workout } from "../parse/types.js";
-import { exportFilename, workoutExportJson } from "../export/document.js";
+import {
+  exportFilename,
+  heartRateStats,
+  workoutExportJson,
+  type Workout,
+} from "matrix-workouts-core";
 import { downloadJson } from "./download.js";
 import { clock, hms, km, longDate, machineLabel, modeLabel } from "./format.js";
 import { icon } from "./icons.js";

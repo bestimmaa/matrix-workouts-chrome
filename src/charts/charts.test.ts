@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { toWorkout } from "../parse/workout.js";
-import type { Workout } from "../parse/types.js";
+import { toWorkout, type Workout } from "matrix-workouts-core";
 import { linearScale, niceDomain, tickStep, ticks } from "./scale.js";
 import { areaPath, linePath, nearestIndex, stepPath } from "./series.js";
 import { buildPanel, elapsedScale } from "./panel.js";

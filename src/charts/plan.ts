@@ -1,6 +1,10 @@
-import { flagHeartRateDropouts } from "../parse/heartRate.js";
-import { controlSignature, type ControlSignature } from "../parse/controlSignature.js";
-import type { Sample, Workout } from "../parse/types.js";
+import {
+  controlSignature,
+  flagHeartRateDropouts,
+  type ControlSignature,
+  type Sample,
+  type Workout,
+} from "matrix-workouts-core";
 import type { PanelSpec } from "./panel.js";
 
 /**

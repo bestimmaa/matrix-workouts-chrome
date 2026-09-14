@@ -2,11 +2,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { toWorkout } from "../parse/workout.js";
-import { flagHeartRateDropouts } from "../parse/heartRate.js";
-import type { Workout } from "../parse/types.js";
+import {
+  exportFilename,
+  flagHeartRateDropouts,
+  toWorkout,
+  type Workout,
+} from "matrix-workouts-core";
 import { renderDashboard } from "./dashboard.js";
-import { exportFilename } from "../export/document.js";
 import { clock, hms, km, modeLabel } from "./format.js";
 
 function fixture(id: string): Workout {

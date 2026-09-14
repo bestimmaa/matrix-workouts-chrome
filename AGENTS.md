@@ -1,4 +1,4 @@
-# AGENTS.md — full-matrix-workouts
+# AGENTS.md — matrix-workouts-chrome
 
 A Chrome extension (Manifest V3) that replaces the stock Matrix / Johnson Fitness
 workout dashboard at `matrixworkouts.jfit.co` with visualizations of **everything
@@ -14,6 +14,14 @@ three are the reason this project exists.
 That paragraph is the argument. README.md makes it to a person; this file is for
 whoever has to work on the thing.
 
+**The parser, API client and export format are not here.** They are
+[`matrix-workouts-core`](https://github.com/bestimmaa/matrix-workouts-core), a package
+this extension depends on and shares with an MCP server. Anything about the record
+shape, the upstream API, program modes, heart-rate filtering or the export document
+belongs in that repo's AGENTS.md and MATRIX_API.md — not here. This file covers the
+extension: the view, the chart geometry, and everything about living inside someone
+else's page.
+
 ---
 
 ## What belongs in this file
@@ -24,8 +32,9 @@ Four documents, one job each. Putting something in the wrong one is how it rots.
 |---|---|
 | `README.md` | what this is, why, and how to run it. For someone arriving cold. |
 | `AGENTS.md` | how to work on it — decisions, rules, and gotchas that already cost a bug. |
-| `MATRIX_API.md` | the upstream API: endpoints, wire shapes, units, what is verified. |
 | `TODO.md` | deferred work, with enough context to pick up cold. |
+| `CHANGELOG.md` | what changed, per tagged version. |
+| [core's `MATRIX_API.md`](https://github.com/bestimmaa/matrix-workouts-core/blob/main/MATRIX_API.md) | the upstream API: endpoints, wire shapes, units, what is verified. Another repo owns it. |
 
 **Write it here if it is:**
 
@@ -44,7 +53,9 @@ Four documents, one job each. Putting something in the wrong one is how it rots.
 - **something the code already says.** Type definitions, signatures, file listings.
   Anything true only until the next refactor belongs next to the code, where it gets
   refactored too.
-- **the upstream wire shape.** Field names, key styles, units → MATRIX_API.md.
+- **the upstream wire shape, or anything about parsing it.** Field names, key styles,
+  units, program modes, the two-ids bug, the export format → the core repo. Crossing
+  that boundary with a note is how two repos start disagreeing.
 - **a task.** → TODO.md. A *decision* about a task still belongs here.
 - **onboarding.** How to install, load and run → README.md.
 - **a log.** No changelogs, session notes, dated progress, ticket trails or "as of
@@ -80,6 +91,11 @@ not delete the first.
 
 All three must pass before committing.
 
+**Until `matrix-workouts-core@0.1.0` is on npm, `npm install` here cannot resolve it.**
+Link the sibling checkout instead — `npm link` in `../core`, then
+`npm link matrix-workouts-core` here — and run `npm install --package-lock-only` once
+the package is published, so the lockfile stops being a promise nobody can keep.
+
 Load the extension via `chrome://extensions` → Developer mode → *Load unpacked* →
 `dist/`. After a rebuild, reload the extension card **and** the target tab —
 content-script changes are not hot-swapped. `npm run dev` rebuilds on save; the
@@ -91,17 +107,9 @@ npm run preview -- <workoutId>  # just one
 THEME=light npm run preview     # force the light theme
 ```
 
-```
-npm run history                 # sign in, download full history -> history/
-npm run history -- --split      # also one export document per ride
-npm run history -- --out data   # somewhere other than history/
-```
-
-`npm run history` is the **standalone client** — the only part of this project that
-runs outside the browser, and therefore the only part that handles a passcode. It
-reads `MATRIX_XID` / `MATRIX_PIN` from `.env` (gitignored; copy `.env.example`), signs
-in, and writes the verbatim API response plus an optional export document per ride.
-`history/` is gitignored. See **MATRIX_API.md** for the endpoints.
+Downloading a whole history now lives in the core package — `npx matrix-workouts-history`,
+which is where the passcode is handled and where `.env` is read. Nothing in this repo
+does that any more.
 
 `npm run preview` renders a fixture to a standalone HTML file through jsdom — the
 same DOM the content script mounts, with the stylesheet inlined. Use it to iterate
@@ -110,40 +118,39 @@ crosshair is inert there; it needs the live listeners.
 
 ## Status
 
-Built, the suite green: the parse layer (`src/parse/`), the chart geometry layer
-(`src/charts/`), the view (`src/ui/`), and the MV3 content script (`src/content/`).
-The extension loads, puts its pill on `/workouts/:id`, and renders every fixture in
-both themes once that pill is used.
+Built, the suite green: the chart geometry layer (`src/charts/`), the view
+(`src/ui/`), and the MV3 content script (`src/content/`). The extension loads, puts
+its pill on `/workouts/:id`, and renders every fixture in both themes once that pill
+is used.
 
-Also built: the HTTP API client (`src/api/`) and the service worker that carries its
-one request, so a workout outside the cached week can be fetched on demand — the
-detail view offers a **Load full history** button instead of an error.
+Also built: the service worker that carries the one cross-origin request, so a
+workout outside the cached week can be fetched on demand — the detail view offers a
+**Load full history** button instead of an error. The client itself is
+`matrix-workouts-core`; `src/content/history.ts` implements its `FetchLike` over
+`chrome.runtime.sendMessage`.
 
-Also built: **JSON export** (`src/export/`). The view's header carries an *Export
-JSON* button that writes the whole record — normalized telemetry plus the upstream
-record verbatim — to a file. See "The export format" below.
-
-Also built: a **standalone client** (`src/cli/history.ts`, `npm run history`) that
-signs in with an xid and passcode and downloads the whole history outside the
-browser. It shares the parse, client and export layers with the extension — the only
-new code is `src/api/login.ts`. **MATRIX_API.md** documents the API it speaks,
-including which endpoints are verified and which were only read out of the site's
-bundle.
+Also built: **JSON export**. The view's header carries an *Export JSON* button that
+writes the whole record — normalized telemetry plus the upstream record verbatim — to
+a file. The document builder is in the core package; this repo only hands the result
+to the browser (`src/ui/download.ts`).
 
 Not built: anything that uses history in aggregate (trends across rides, a power
 curve, sprint-to-sprint comparison). The client returns the whole list; only the one
-requested workout is currently rendered from it. The standalone client now puts that
-whole list on disk, which is the obvious place to start.
+requested workout is currently rendered from it. `npx matrix-workouts-history` puts
+that whole list on disk, and the MCP server is where cross-ride analysis is going
+first — see TODO.md.
 
 **Scope: the indoor bike only, and this is now enforced rather than merely
 intended.** Both bike types (upright and recumbent) are covered by fixtures and are
 what this is designed and verified against. Treadmill and rower are explicitly *not*
 a goal right now — do not build for them, and do not go capturing fixtures for them.
-`src/parse/machine.ts` holds the list and `src/content/main.ts` acts on it: a
+`isSupportedMachine` in the core package holds the list and `src/content/main.ts`
+acts on it: a
 treadmill or rower ride gets no pill and no takeover, and the toolbar icon explains
 itself there instead of drawing panels about channels the machine may not report.
-See "Deciding what to take over" below. The parse layer stays machine-agnostic because that
-costs nothing and the upstream shape is shared, and `src/charts/plan.ts` keeps its
+See "Deciding what to take over" below. The parse layer stays machine-agnostic
+because that costs nothing and the upstream shape is shared, and `src/charts/plan.ts`
+keeps its
 speed/incline fallbacks (guarded, tested as inert on bikes) so a non-bike record
 degrades into something readable rather than an exception. Neither is a promise
 that those machines are supported.
@@ -153,362 +160,21 @@ that those machines are supported.
 
 ---
 
-## Where the data actually lives
-
-**This is the single most important thing to know about this codebase.**
-
-The workout detail page (`/workouts/:id`) makes **no network request**. It renders
-entirely from a redux-persist blob already in `localStorage`. A content script
-shares the page's origin, so it can read that blob directly:
-
-```js
-const root = JSON.parse(localStorage.getItem('root'));
-const userStore = JSON.parse(root.userStore);   // sub-keys are JSON *strings*
-const workouts  = userStore.workouts;           // array of workout records
-```
-
-Note the double parse — `root` is a JSON object whose values are themselves JSON
-strings. Keys present: `authStore`, `configStore`, `navigationStore`, `userStore`.
-
-**But not always.** Observed live on 10 Sep 2026: `root.userStore` was an already-parsed
-*object*, not a JSON string. Both shapes occur, so never assume either —
-`parsePersistSlice` accepts both and everything must go through it.
-
-**Prefer localStorage over the API.** It needs no token, no network, and no
-permission beyond the content script. Treat the API as the fallback for history
-deeper than what the app has cached (see below).
-
-### The HTTP API — the only route to full history
-
-**Base host is `https://apollo.jfit.co`.** (`orion.jfit.co` also appears in the
-bundle but answers 403 — do not use it.) Bearer token sits at
-`userStore.exerciserProfile.token`.
-
-```
-GET  /exerciser/{id}/workouts        <- FULL history, intervals included
-POST /exerciser/login                <- xid + passcode -> { id, token }
-POST /exerciser/exchange_token_for_exerciser
-POST /exerciser/register
-POST /exerciser/validate
-GET  /exerciser/{id}
-```
-
-**MATRIX_API.md is the full reference** — request and response shapes, units, the
-interval fields, and a note on every endpoint saying whether it was verified live or
-merely read out of the bundle. Read it before touching `src/api/`.
-
-`POST /exerciser/login` takes `{ username: xid, password: pin, type: "xid", club_id: 0 }`
-and answers with a flat profile carrying `id` and `token`. `src/api/login.ts` returns
-only those two: the response also holds name, email, birthday and weight, none of
-which any later call needs. The extension never calls it — in the browser the token is
-already in `localStorage`, which is strictly better because no passcode is handled at
-all.
-
-`GET /workouts/{id}` is in the bundle but answers 404; fetch the list and filter.
-The list response is `{ workouts, messages, paging }` and returns complete records
-including every interval — one request gets everything.
-
-Implemented in `src/api/`. Three things about it are deliberate:
-
-- **The request goes through the service worker, not the content script.** Content
-  script `fetch` is subject to CORS as the *page's* origin regardless of
-  `host_permissions`, so a call to `apollo.jfit.co` would depend on response headers
-  we do not control. From the worker it runs with the extension's host permissions
-  and does not. `src/content/history.ts` implements `FetchLike` over
-  `chrome.runtime.sendMessage`, so `fetchWorkoutHistory` is the same code in tests
-  (with a stub) and in the browser. The worker hard-allowlists the API origin: the
-  url arrives from a content script, which shares a page with code we do not control.
-- **Paging is not followed.** The endpoint has returned every record in one response
-  on every account seen — confirmed live on 10 Sep 2026, where `paging` came back as
-  `{ returned: 43, total: 43, page: 1 }`. Inventing page parameters against an undocumented API is a
-  good way to silently truncate someone's history, so a `paging.total` larger than
-  what arrived surfaces as `truncated` instead.
-- **One bad record does not cost the user their history.** Records that fail to parse
-  are counted in `skipped` and the rest are returned.
-
-**The cache holds only the current week.** Measured on one account: `localStorage`
-had 2 workouts while the API had 43. Worse, the SPA does not fetch on demand — a
-direct link to a workout outside the cached week renders "Oops! An error has
-occurred." So any feature that reaches beyond the current week must go to the API.
-
-### Two shapes for the same data
-
-**The API returns `snake_case`; the persisted blob returns `camelCase`** — including
-inside `intervals` (`average_distance` vs `averageDistance`). `camelizeWorkout()`
-normalizes both into one code path; **always go through it rather than reading raw
-keys.** That rule is the part that matters here; MATRIX_API.md carries the wire
-detail, including the four fields the API sends that the cache does not.
-
----
-
-## Data model
-
-### Workout record
-
-**Field tables live in MATRIX_API.md**, in both key styles, with units. What follows
-is what those fields *mean* here — the parts that have cost us a bug.
-
-**The upstream shape has changed at least once, and the fixtures straddle it.**
-Read live on 11 Sep 2026, the cached records carry `id` and no longer carry
-`programLevel` or `sprint8ProgramLevel` — including a Sprint 8 ride from 10 Sep, which
-has `sprintScores` and `totalSweatScore` but neither level field. Six older fixtures
-still carry `programLevel`. Nothing breaks: `toSprint8` reads
-`sprint8ProgramLevel ?? programLevel`, both absent gives `null`, and the sprint
-caption drops its `· level N` clause. Treat it as the standing warning that this
-shape moves without notice, which is the entire reason the export carries
-`source.record`.
-
-`modelId` is easy to lose: **the machine *model*
-(`5bcf75c1…` for both bikes seen) — which is not `machineId`, the UUID of the
-individual physical unit.** It is called out here because the first real export
-caught two fixtures missing it along with `id`: `raw-6aa04566…` and `raw-6aa194a0…`
-were the two captured by hand through the devtools console, and hand-capture
-enumerates a field list and drops whatever is not on it. That is the losslessness
-argument for `source.record`, demonstrated rather than asserted. Both fixtures have
-since been patched from exports.
-
-`toWorkout` keeps the record it was handed on `Workout.raw`, untouched and in
-whichever of the two shapes it arrived in. That field exists for the export and for
-nothing else: the upstream shape is undocumented and carries fields this model does
-not name, so a normalized-only export would get quietly worse every time the
-platform adds one. Do not read `raw` to dodge the normalized model — that is what
-`camelizeWorkout` is for.
-
-### Two ids, not one
-
-**A record carries `workoutId` *and* `id`, and they are not the same value.** The
-site's own `/workouts/:id` links are built from **`id`**; `workoutId` is what names
-the ride everywhere else, including this repo's fixture filenames and the export.
-
-Read live from the API on 12 Sep 2026, across one account's 45 records:
-
-| | n | |
-|---|---|---|
-| `id` == `workoutId` | 20 | every ride from **13 Aug 2026** onwards |
-| `id` != `workoutId` | 25 | every ride **before** that date |
-
-The cutover is clean — there is no ride on either side of 13 Aug that breaks it — so
-the platform changed how it mints records and older rides kept their original pair.
-An example pair, the 12 Aug ride that is also `fixtures/raw-6a7cab8c…`:
-`workout_id` `6a7cab8cc23a154bebccef65`, `id` `6a7cabca18b66a215bd6d6ad`, and the
-site links it as `/workouts/6a7cabca18b66a215bd6d6ad`.
-
-**This was a real bug, and the shape of it is worth remembering.** Reading only
-`workoutId` made every ride older than 13 Aug unreachable: *Load full history*
-fetched all 45 records, the URL's id matched none of them, and the view told the user
-their own workout was not in their own history. The whole history was in hand; only
-the key was wrong. Nothing in the cached week could catch it, because there the two
-ids happen to agree — and six older fixtures carry no `id` at all, having been
-captured before the platform mirrored it into the blob.
-
-So: **`Workout` carries both.** `id` is `workoutId`, `routeId` is the record's `id`
-(falling back to `workoutId` where there is none), and **anything resolving a URL
-must go through `findWorkout`**, which tries `routeId` first and `id` second. The two
-id spaces do not collide: all 45 `workoutId`s and all 45 `id`s were distinct, and no
-value appeared in both roles. `cachedMachineType` matches the same way, in both key
-styles, because `renderRoute` hands it a URL segment.
-
-`toWorkout` needs only one of the two to read a record, so a future shape that drops
-either one still parses.
-
-### Interval sample (one per 10 s)
-
-**Field table in MATRIX_API.md.** Three things about it matter to code in this repo:
-
-- **`power`, `resistance` and `rpm` are the entire reason this project exists.** None
-  of the three appears anywhere in the stock UI.
-- **`averageDistance` is cumulative distance, not an average.** The name is a lie and
-  reading it as one produces a plausible, wrong chart.
-- **Field presence is machine-type dependent.** Never assume a field is meaningful
-  just because it is present and zero.
-
-### Program modes (`programType`)
-
-`programType` is the numeric console program — the workout *mode*. It is the only
-mode marker, and **the web app itself never reads it**: `programType` appears exactly
-once in the whole app bundle, in the schema. The app detects a Sprint 8 ride
-structurally, by the presence of `sprintScores`. Do the same.
-
-Observed across one account's 44 workouts:
-
-| `programType` | n | Mode | Extra fields |
-|---|---|---|---|
-| 46 | 27 | Target heart rate — *confirmed* | — |
-| 18 | 7 | **Sprint 8** (HIIT) — *confirmed* | `sprintScores`, `totalSweatScore`, `sprint8ProgramLevel` |
-| 20 | 4 | **Target watts** (constant power) — *confirmed* | — |
-| 47 | 3 | **Virtual Active** (scenic route) — *confirmed* | — |
-| 38 | 1 | **Fitness test** (console VO₂ / Cooper) — *confirmed* | — |
-| 0 | 2 | *unidentified* | — |
-
-### How the mapping was established
-
-**The rider keeps a dated Notion training log**, one row per session with duration,
-distance, average watts and free-text notes:
-[Indoor cycling workouts](https://app.notion.com/p/5156e504e6484a8bab3580112d8b3cee).
-Matching a ride's date and duration against that log identifies its mode directly.
-**This is the authoritative route — use it before inferring anything from telemetry.**
-
-- **20 = target watts.** All four rides are explicitly watt-target sessions in the
-  log: "2×18 min at 145–150 W" (and "turning the watt target down" between blocks),
-  "4×4 @ 200 W", "2×18 min @ 155 W", "2×20 min @ 155 W". The 2026-08-12 ride matches
-  its row exactly — 46.07 min, 22.29 km, 129 W average against a fixture mean of 129.2.
-- **38 = fitness test.** The one program-38 ride matches the log's "Fitness test /
-  indoor bike" row exactly: 2026-07-20, 902 s, 7419 m, 147.6 W against a logged 149 W.
-  The console reported a VO₂ estimate and "final stage completed: 7" — which is why
-  the series shows eight power stages at a fixed resistance.
-- **46 = target heart rate**, corroborated by entries naming the mode outright
-  ("Relaxed Zone 2 ride in Target HR mode", "Target HR was 139").
-- **47 = Virtual Active**, the console's scenic-route mode: the video's terrain
-  drives resistance and the rider answers it with cadence. Reported by the rider
-  off the console for the 2026-09-13 ride — 2403 s, 20.37 km, 144.8 W mean, 241
-  samples, `id` `6aa67d338d2b6d09c6412d7b`. That is one confirmed ride naming an
-  id, the same standard that pinned 38.
-
-**What 47 buys and what it does not.** The other two program-47 rides (17 Aug, 3 min;
-and a 21 min one) inherit the name **by id**, with no confirmation of their own, and
-that is the whole basis for calling them Virtual Active. Do not go looking for
-corroboration in the series: both 47 rides open `1, 4, 4, 4, …`, which reads like a
-signature right up until you check `raw-6aa04566…` — a program 46 — which opens
-`1, 4, 4` as well.
-
-**0 is still open.** Its rides appear in the log but no entry names a console mode.
-Program 0 is plausibly manual / quick-start — that is the usual console convention
-for id 0, and both rides are short unstructured efforts — but convention is not
-evidence, so it stays `"unknown"`.
-
-### A rejected heuristic — do not re-derive it
-
-Detecting watt-target rides from the data alone looks feasible on a small sample and
-**fails on the full set**. Measuring the fraction of a ride spent on a power plateau:
-program 20 scores 0.50–0.76, but three of the 24 program-46 rides score 0.51–0.72.
-Any threshold misclassifies them. Use `programType` for this distinction.
-
-Measured across all 44 rides, the **mean magnitude of a resistance change** does
-separate the control loops — how far the level moves each time it moves:
-
-| Program | rides | duration | change rate /100 | **mean step** | reading |
-|---|---|---|---|---|---|
-| 46 | 24 | 1–96 min | 4–67 | **1.01–1.44** | single-level nudging = a closed loop chasing a target |
-| 18 | 7 | 4–20 min | 27–33 | **3.0–9.4** | big swings between sprint and recovery |
-| 38 | 1 | 15 min | **0** | **0** | resistance pinned at 1, power a clean 35→280 W staircase |
-| 20 | 4 | 46–60 min | 6–13 | 1.43–3.10 | infrequent changes; the console holds a wattage, so resistance only moves as cadence drifts |
-| 0 | 2 | 10, 31 min | 18–30 | 1.64–3.09 | — |
-| 47 | 3 | 3–40 min | 5–34 | **1.73–3.00** | terrain-driven: long plateaus, occasional steps |
-
-Note what this does and does not buy you: it cleanly isolates 46 (single-level
-nudging), 18 (big swings) and 38 (no movement at all), but 0, 20 and 47 overlap each
-other and overlap 46. The log, not the telemetry, is what pinned 20.
-
-**And the overlap got worse, not better, as the sample grew.** The 13 Sep Virtual
-Active ride — the longest program 47 by a wide margin at 40 min — scores a mean step
-of 1.73 over 22 changes in 241 samples, against the 2.54–3.00 the two short 47 rides
-had shown. Its resistance sits on long plateaus — run-length encoded, the ride opens
-`1x1 4x13 5x1 7x1 8x1 9x46 11x50 10x15 11x6 8x50` before breaking up into shorter
-runs — so a handful of single-level transitions *into* and *out of* each plateau drag
-the mean step down toward 46's 1.01–1.44 band, even though a 46 and this ride look
-nothing alike: one nudges constantly, the other holds a level for eight minutes. A metric that
-moved this much on one more ride was never going to hold a threshold. This is the
-second independent reason not to derive the mode from telemetry.
-
-To close 0: ride it once and read the mode off the console, then add a row to the
-training log so the ride can be matched.
-
-### Prefer the derived control signature over the program id
-
-Because the ids are only partly decoded, `controlSignature(samples)` reads how the
-load was actually driven, straight from the series: `power_controlled` (resistance
-flat, power moving — the ramp test), `interval_blocks` (large frequent swings —
-Sprint 8), or `unclassified`. It names only what the data genuinely isolates and
-exposes the raw metrics for everything else. **Drive visualization choices off this
-rather than off `programType`,** so an unmapped or newly-introduced program still
-renders sensibly.
-
-**Sprint 8 is the one structural variant.** Every other program produces an
-identical record shape and identical interval keys, so the parser needs no
-per-program branching beyond the sprint block. `totalSweatScore` is exactly the sum
-of the eight `sprintScores` — a useful invariant, and it is asserted in the tests.
-
-**Do not generalize a program's *behaviour* across modes.** On program 46 power
-tracks resistance almost perfectly (r ≈ 0.98). On program 38 resistance is pinned at
-level 1 for the whole ride while power steps 35 → 280 W, so any analysis that treats
-resistance as the driver of output is wrong there. Read the series, not the habit.
-
-### Data-quality gotchas
-
-- **Heart-rate dropouts, and they can be most of the ride.** Chest-strap glitches
-  show up as implausibly low values including literal `0`, `14`, `15`, `30`, and
-  softer ones in the 80s and 90s during a 150 bpm ride. Counts after filtering:
-  0 of 272 (08 Sep, the control) → 80 of 314 (09 Sep) → 134 of 362 (03 Sep) →
-  **231 of 376** on the recumbent ride, where the strap died halfway and never
-  recovered. **Filter before charting or averaging**, label the filter, and never
-  assume a majority of samples are good.
-
-  **A high rejection rate is usually the strap, not the filter.** Validated against
-  an independent sensor: on the 03 Sep ride the rider's Apple Watch recorded a smooth
-  trace averaging 153 bpm over 93–172, while the console's own series for the same
-  hour is littered with single-sample drops to 15, 32, 47 and 49 sitting between
-  neighbouring 155s and 160s. The filtered series averages 151 over 98–173 — within
-  two bpm of the watch — so throwing away a third of that ride was right.
-
-  The filter (`src/parse/heartRate.ts`) is an absolute floor plus a rate-of-change
-  check, and two things about the rate check are load-bearing:
-
-  - **The reference goes stale.** It compares against the last *accepted* sample,
-    which may be minutes back, and over minutes a heart rate legitimately moves much
-    further than it can in ten seconds. Rejecting a recovered sample for being far
-    from a stale reference keeps the reference stale and rejects the next one too.
-    That cascade threw away **58 of 61 samples** on the program-0 ride, which does not
-    contain a single reading under 60 bpm. The allowance therefore widens with the gap.
-  - **The widening is asymmetric, because dropouts are low-biased.** A failing strap
-    reads low, never high. Widening equally in both directions admits the softer
-    glitches, and the reference then anchors on an 86 and rejects the genuine 140s
-    behind it — measurably worse, 83 rejections to 89 on one fixture. Rises get the
-    full allowance immediately; falls get none until the gap passes a grace window.
-
-  The constants are physiological in kind and empirical in value. `npm test` pins the
-  outcome on every fixture; re-run it if you touch them.
-- **Reported summaries are not derived from the intervals.** `averageHeartRate`,
-  `minHeartRate` and `maxHeartRate` disagree with the series (e.g. reported min 87
-  vs series min 0/86; reported max 169 vs series max 168). Compute your own from the
-  samples if you need internal consistency, and say which you are showing.
-
-  **But "not derived from" does not mean "worse".** On the 03 Sep ride the reported
-  average of 153 bpm matches the rider's Apple Watch exactly, while the filtered
-  series averages 151 — the console appears to have averaged in real time, before the
-  dropouts that the series preserves. So on a badly glitching strap the reported
-  figure can be the more accurate one. Show both rather than assuming either wins.
-- `averageDistance` is cumulative, `distance` is the delta. The names lie.
-- **The final interval's `duration` is NOT always 0.** Observed: 0, 1, 2, 3, 5, 6, 7,
-  8, 10 and 11. **Never compute elapsed time as `index * 10`** — accumulate each
-  sample's own `duration`, which is what `toWorkout` does.
-- **Resistance range is machine- and program-dependent: 1–30 observed.** Do not
-  hard-code an axis maximum; take it from the data.
-- Per-sample `distance` is quantized to multiples of **16.09 m = 0.01 mile** — the
-  console records imperial and the API converts. This is why summed samples drift
-  from the reported total.
-- Cumulative distance may end slightly below the record's `distance` total.
-
----
-
 ## Architecture
 
-Four layers. Which layer a directory belongs to decides what it may touch, and
+Three layers. Which layer a directory belongs to decides what it may touch, and
 `src/layers.test.ts` enforces it — see below.
 
 ```
+matrix-workouts-core       the package underneath all of it: parse, api, export
 src/
-  core — no platform underneath it at all
-    parse/       localStorage blob or API record -> typed Workout model
+  charts — no platform underneath it at all
     charts/      chart geometry (data + scale -> path strings, ticks)
-    api/         jfit HTTP client (credentials + history backfill), over injected fetch
-    export/      the JSON a user takes elsewhere (Workout -> document)
   view — DOM, and nothing more
     ui/          layout, readout console, stat tiles, icons, table view
   extension — DOM + chrome.* + the network
     content/     content script — detects the route, reads localStorage, mounts UI
     background/  MV3 service worker: carries the one cross-origin request
-  cli — node, for what runs outside a browser
-    cli/         standalone client: sign in, download the whole history to disk
 scripts/       dev tooling, not shipped and not a layer (see `npm run preview`)
 fixtures/      real captured workout records — see below
 ```
@@ -520,12 +186,14 @@ Decisions taken up front (revisit deliberately, don't drift):
   the point is to replace the limited dashboard, not sit next to it. *In place*, but
   **only when asked**: see the default-collapsed rule below.
 - **Hand-authored SVG charts, no runtime charting library.** See below.
-- **Zero runtime dependencies.** The whole bundle is 38 kB / 13 kB gzipped, ships
-  as one IIFE, and makes no network request of any kind.
+- **One dependency, and it is ours.** `matrix-workouts-core` has no dependencies of
+  its own, so the bundle is still one IIFE that makes no network request of any kind.
+  `src/layers.test.ts` holds an allowlist rather than a yes/no, so a second package
+  cannot arrive without someone deciding it should.
 - **The core stays pure and platform-free** so it is unit-testable against fixtures
-  without a browser — and so anything else can consume it. Concretely: `charts/`
-  emits *geometry* — path `d` strings, tick positions, scales — and `ui/` turns that
-  into elements. Nothing in `parse/`, `charts/`, `api/` or `export/` may name
+  without a browser — and so anything else can consume it, which is now literally
+  true. Concretely: `charts/` emits *geometry* — path `d` strings, tick positions,
+  scales — and `ui/` turns that into elements. Nothing in `charts/` may name
   `document`, `chrome`, `fetch` or a `node:` module. This is a **test, not a
   convention**: see "The layering" below.
 - The site is a React SPA: routes change **without a page load**. The content
@@ -579,41 +247,47 @@ Decisions taken up front (revisit deliberately, don't drift):
   no request; fetching one is what the rule forbids.
 
 
-### The layering, and why it is not four packages
+### The layering, and why part of it left
 
-The four layers above are a real boundary, and `src/layers.test.ts` fails the build
-on a crossing: a platform global a layer is not allowed to name, an import that
-points the wrong way up the stack, a bare package import into a layer that is meant
-to stay dependency-free, or a new directory under `src/` that no layer claims.
+The three layers above are a real boundary, and `src/layers.test.ts` fails the build
+on a crossing: a platform global a layer is not allowed to name, an import that points
+the wrong way up the stack, a package import that is not on the allowlist, or a new
+directory under `src/` that no layer claims.
 
-**Why a test rather than four npm packages.** The split is tempting and was
-considered. It buys compile-time enforcement of a rule that is not being broken, and
-publishability this repository has no use for yet; it costs workspaces, four
-manifests and tsconfigs, cross-package build ordering ahead of the two vite passes,
-and version bumps — to separate about five thousand lines with no runtime
-dependencies. The cut also lands in an awkward place: `scripts/preview.ts` renders
-the real dashboard under jsdom, so `ui/` would have to sit in the shared package
-too, leaving `extension` and `cli` as thin leaves. **Revisit when one of these is
-true, and not before:**
+**This file used to argue against splitting the core into a package**, and the
+argument was right for as long as its own conditions held. It named them:
 
-- the CLI wants a runtime dependency the extension must not ship (an arg parser, a
-  real `.env` reader, a PDF writer) — today the answer is zero dependencies
-  everywhere, which is the only reason one manifest works;
-- a second JavaScript consumer appears that cannot live in this repo;
-- there is an actual reason to publish to npm. The repository is `private: true`,
-  and a package split with no publish target is cost without the payoff.
+> a second JavaScript consumer appears that cannot live in this repo; there is an
+> actual reason to publish to npm.
+
+Both arrived together in Sep 2026 — an MCP server, in its own repo, published so
+agents can `npx` it — so `parse/`, `api/` and `export/` are now
+[`matrix-workouts-core`](https://github.com/bestimmaa/matrix-workouts-core). The
+decision was not overturned; its stated trigger fired. What the old argument feared
+has not happened and must not: there is still **one** manifest here, **one**
+dependency, and no workspace.
+
+The awkward part the old note predicted turned out to be the easy part.
+`scripts/preview.ts` renders the real dashboard under jsdom, so `ui/` could never
+join the shared package — and it did not need to. The cut ran below `charts/`
+instead, which is exactly where the platform boundary already was.
+
+**Two rules survive the move and are what the test now defends:**
+
+- `charts/` stands on nothing. A chart reaching for `document` is untestable against
+  fixtures without a browser, which is the only reason the chart tests are quick.
+- `mayDependOn` is an allowlist. One package, deliberately chosen, shared with the
+  MCP server. The IIFE bundle and the no-network promise in README depend on that
+  list staying at one entry.
 
 **A consumer that is not JavaScript does not want a package anyway.** A phone app
-writing rides into HealthKit cannot import any of this. What it consumes is the
-export document, so *that* is the interface it depends on, and it is pinned in
-`src/export/contract.test.ts` — see "The export format".
+writing rides into HealthKit cannot import any of this. What it consumes is the export
+document, so *that* is the interface it depends on, and it is pinned by a contract
+test in the core repo.
 
-**`src/cli/` is shipped; `scripts/` is not.** They were one directory and should
-never have been: `src/cli/history.ts` is a user-facing tool that handles a passcode
-and is documented in README, while `scripts/preview.ts` is a development aid that
-renders fixtures to HTML. Only the first is a layer, only the first is bound by the
-rules above, and only the second is allowed to reach into `ui/` — which it does, on
-purpose, and which is exactly why it lives outside `src/`.
+**`scripts/` is not a layer and never was.** `scripts/preview.ts` is a development aid
+that renders fixtures to HTML, and it is the one thing allowed to reach into `ui/` —
+which it does, on purpose, and which is exactly why it lives outside `src/`.
 
 ---
 
@@ -624,7 +298,7 @@ a statement about what the code had been *tested* against, not about what it wou
 *render* — a treadmill ride would have got a dashboard leading with power, resistance
 and cadence, three channels that machine may not report at all.
 
-`isSupportedMachine` in `src/parse/machine.ts` is the whole rule, and there are three
+`isSupportedMachine` in the core package is the whole rule, and there are three
 decisions inside it worth keeping:
 
 - **Both bike types, not just the upright one.** The obvious narrowing is wrong: this
@@ -717,104 +391,6 @@ id — it had been sitting in an eyebrow nobody thought of as data. It now lives
 the footer's provenance line, where a narrow viewport cannot collapse it away, and
 `dashboard.test.ts` asserts every summary figure is still on the page. Add to that
 assertion rather than trusting a careful eye.
-
----
-
-## The export format
-
-The platform offers no export of any kind. The record is otherwise reachable only by
-reading `localStorage` by hand in the devtools console — which is exactly how this
-repo's fixtures were captured, one field at a time, and the reason an export was on
-the TODO list before it was a feature.
-
-`src/export/document.ts` builds the file; `src/ui/download.ts` hands it to the
-browser. The builder is pure and DOM-free for the same reason `parse/` and `charts/`
-are: what leaves this extension is worth asserting against every fixture, and a test
-should not need a browser to do it.
-
-```
-{
-  format: "full-matrix-workouts/workout",
-  formatVersion: 1,
-  exportedAt: <ISO 8601 UTC>,
-  workout: {
-    ...the normalized model, units in the names,
-    derived: { heartRate: {...stats, filter}, control: <controlSignature> },
-    samples: [ ...Sample, heartRateValid ]
-  },
-  source: { shape: "camelCase" | "snake_case", record: <the upstream record, verbatim> }
-}
-```
-
-Four decisions in it, none of them arbitrary:
-
-- **`source.record` carries every field of the upstream record, unaltered**, which is
-  what makes the export lossless. The upstream shape is undocumented and can change
-  without notice; an export of only the normalized model would silently become the
-  smaller of the two records the first time the platform adds a field. It also means
-  **capturing a fixture is now one click and one command**:
-
-  ```
-  jq '.source.record' matrix-workout-2026-09-03-<id>.json > fixtures/raw-<id>.json
-  ```
-
-  Unaltered includes the key style, so an API-shaped record comes back out
-  `snake_case` — which is what `raw-6a998daf…` is and what a test asserts it stays.
-
-  **It is not byte-for-byte, and do not claim that it is.** The record goes through
-  `JSON.stringify` on the way out, which normalizes number *formatting* — a `28.0`
-  on the wire comes back as `28` — and does not promise the key order the server
-  sent. Both are the same JSON to every parser, so nothing downstream can tell; it
-  matters only if you are diffing an export against a fixture, where it shows up as
-  noise that is not a difference in the data. When patching an existing fixture,
-  splice in what is missing rather than rewriting the file from an export.
-- **Dropouts are flagged, not scrubbed.** Every sample carries `heartRateValid`, and
-  `heartRateBpm` still holds whatever the console recorded. Filtering is the
-  consumer's decision, and an export that hid the bad readings would be a worse
-  account of the ride than the record it came from. `derived.heartRate.filter`
-  states in the file itself what the flag means — the same "label the filter" rule
-  the charts follow.
-- **Both heart-rate summaries travel.** `reported` is the platform's and `derived` is
-  ours, side by side, because they disagree and on a badly glitching strap the
-  platform's is the better of the two. Picking one for the reader is not this file's
-  job.
-- **`programType` rides along with `mode`.** The raw console id is always present
-  even where we have no name for it; `mode` is `"unknown"` rather than a guess.
-
-`formatVersion` is for breaking changes only — adding an optional field does not
-need one.
-
-**This document is the interface for anyone outside this repository**, and the only
-one they get: a consumer written in another language — a phone app pushing rides
-into HealthKit, say — imports none of this code and decodes the JSON instead. It
-cannot be fixed by the commit that breaks it, so the shape is pinned in
-`src/export/contract.test.ts`: the exact set of key paths, and which fields may
-arrive null or absent. The tests in `export.test.ts` assert what the document
-*means* and would all still pass if `distanceMeters` were renamed tomorrow; this one
-is what makes that rename a decision instead of an accident. Adding a key means
-adding a line there. Renaming or removing one means bumping `formatVersion` and
-saying so here — the version number is the only warning a decoder already in the
-wild receives.
-
-The nullable list is taken from the **declarations, not the fixtures**. No fixture
-currently has a null `calories` or a null reported heart rate, but the type says
-both can be, and a decoder written against today's fixtures would break on the first
-ride where the strap was never paired. `source.record` is deliberately outside the
-contract: it is the upstream record verbatim, and pinning it would pin someone
-else's undocumented API.
-
-The filename is `matrix-workout-<YYYY-MM-DD>-<workoutId>.json`, dated from
-`workoutTime` in **UTC** rather than a localized rendering, so two machines exporting
-the same ride agree on the name.
-
-**The download needs no new permission and that is deliberate.** It is a blob URL on
-a detached `<a download>` — never inserted, so the site's DOM stays untouched.
-`chrome.downloads` would mean adding `"downloads"` to a manifest whose permission
-list is deliberately the shortest it can be. Chrome may show its own "allow multiple
-downloads" prompt for the origin; that is the browser asking the user, which is the
-right place for the question. The button confirms for itself on success, because
-Chrome's download bubble can be dismissed or off-screen and a click that produces
-nothing visible reads as broken.
 
 ---
 
@@ -936,7 +512,7 @@ This handles personal health data.
 - **No telemetry, no analytics, no external requests** other than to `jfit.co`
   hosts the user is already logged into.
 - Never log or persist the bearer token, email, or profile fields. `redact()` in
-  `src/api/credentials.ts` exists because a transport error's message can contain the
+  the core package exists because a transport error's message can contain the
   request; every error that escapes the client passes through it, and a test asserts
   the token cannot appear in a thrown message. **No fixture in this repo carries a
   real token, and none ever should.**
@@ -963,16 +539,21 @@ This handles personal health data.
 records** — do not "clean" them, the mess is the point.
 
 `fixtures/persist-root.json` is a synthetic `localStorage` blob wrapping ten of the
-real records in the true double-encoded shape; it is what the parser tests load.
-Each `raw-<workoutId>.json` is one record, with a `.csv` of the same series beside
-it for eyeballing.
+real records in the true double-encoded shape. Each `raw-<workoutId>.json` is one
+record, with a `.csv` of the same series beside it for eyeballing.
+
+**The canonical set lives in the core repo**, where the parser they exist to test now
+lives. This copy is the one the chart and view tests run against. They are immutable
+captures, so two copies do not drift — but new captures land in
+[matrix-workouts-core](https://github.com/bestimmaa/matrix-workouts-core) first, and
+get copied here only when a view test needs one.
 
 **`raw-6a998daf…` is the odd one out, deliberately.** Every other fixture is the
 camelCase localStorage shape; this one was captured from `apollo.jfit.co` and is the
-API's own snake_case, which makes it the only honest test input for `src/api/`
+API's own snake_case, which makes it the only honest test input for the API client
 (the alternative — converting a camelCase fixture in the test — tests the converter,
-not the client). It is therefore **not** in `persist-root.json`, and a test asserts it
-stays snake_case so nobody "normalizes" it away.
+not the client). It is therefore **not** in `persist-root.json`, and a test in the
+core repo asserts it stays snake_case so nobody "normalizes" it away.
 
 It also carries the project's only independent ground truth: the rider wore an Apple
 Watch for that hour, which recorded a smooth trace averaging **153 bpm over 93–172**.
@@ -1019,40 +600,27 @@ above. If that changes, note that those records populate different fields
 built on bikes alone; the machine-type branches in `src/charts/plan.ts` are
 reasoned from the field list, never verified against a real record.
 
-Parser tests must cover: the double JSON parse, a missing or malformed `root`, an
-empty `workouts` array, unknown `machineType`, the snake_case API shape, a partial
-sprint-score set, and a final sample whose duration is not 10.
-
 Chart tests (`src/charts/charts.test.ts`) run the geometry against every fixture and
 assert the conventions directly: no `NaN` in any emitted path, one palette slot per
 panel, a step path for resistance and a line path for power, every non-zero baseline
 labelled, and dropouts nulled rather than zeroed. **Add the assertion when you add
 the rule** — a convention nothing checks is a convention that drifts.
 
-Export tests (`src/export/export.test.ts`) run the document builder against every
-fixture and assert the format's promises directly: power, resistance and cadence on
-every sample of every ride; sample times taken from the parse layer rather than
-recomputed as `index * 10`; dropouts flagged without the console's reading being
-erased; both heart-rate summaries present; and `source.record` equal to the fixture
-it came from, in the shape it came in. Add the assertion when you add the rule.
-
 View tests (`src/ui/dashboard.test.ts`) run under `// @vitest-environment jsdom` and
 cover the DOM: accessible labels, arrow-key scrubbing, the dropout readout, the
 sprint bars, the table row count. Note that jsdom rebases `import.meta.url` onto the
 document URL, so fixtures there must be resolved from `process.cwd()`.
 
-Two tests assert **structure rather than behaviour**, and both fail on a change no
-other test would notice:
+`src/layers.test.ts` asserts **structure rather than behaviour**, and fails on a
+change no other test would notice — see "The layering" above. It parses every source
+file with the TypeScript compiler rather than grepping, because a mention of
+`localStorage`, `chrome` or `fetch` inside a comment or a string is not a use of it,
+and a scan that cannot tell the difference gets switched off within the week and
+protects nothing.
 
-- `src/layers.test.ts` parses every source file with the TypeScript compiler and
-  checks the layering — see "The layering" above. It parses rather than greps on
-  purpose: every mention of `localStorage`, `chrome` or `fetch` in the core today is
-  inside a comment or a string (`parse/persist.ts` names the key in its error
-  messages; `api/client.ts` documents the global its `FetchLike` avoids), so a
-  textual scan flags all of them, gets switched off within the week, and protects
-  nothing.
-- `src/export/contract.test.ts` pins the exported key set and its nullability — see
-  "The export format". It is the only test that fails on a rename.
+The parser, export and API tests moved out with the code they cover. If a change here
+turns out to need one of them, it is a change to the core package, and it belongs in
+that repo with its own release.
 
 ---
 

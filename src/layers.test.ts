@@ -7,18 +7,25 @@ import ts from "typescript";
 /**
  * The layering, enforced rather than merely intended.
  *
- * `parse/`, `api/`, `charts/` and `export/` have no platform under them: no DOM, no
- * `chrome.*`, no `node:` imports, no `fetch`. That is not an accident of style — it
- * is what let the standalone client (`src/cli/history.ts`) reuse the whole stack
- * with `api/login.ts` as its only new code, and it is what a future consumer outside
- * this repo depends on. Nothing in the compiler stops someone reaching for
- * `document` in `parse/` on a Tuesday and everything still passing, so this does.
+ * The parser, API client and export format used to live here as a `core` layer with
+ * no platform under it. They are now `matrix-workouts-core`, an npm package shared
+ * with the MCP server, and the boundary that used to be internal is a dependency.
+ * What survives the move is the property that made the extraction possible in the
+ * first place, and it still has to be defended here:
+ *
+ * - **`charts/` stands on nothing.** It emits geometry — path `d` strings, ticks,
+ *   scales — and a chart that reached for `document` would stop being testable
+ *   against fixtures without a browser, which is the only reason the chart tests are
+ *   fast enough to run on every change.
+ * - **Nothing sprouts a dependency tree.** `mayDependOn` is an allowlist, not a
+ *   boolean: a layer may import the one package this extension deliberately depends
+ *   on, and nothing else. The bundle is one IIFE that makes no network request of any
+ *   kind; that is a promise in README, and it survives exactly as long as the list
+ *   below stays short.
  *
  * **Why the TypeScript AST and not a grep.** Every mention of `localStorage`,
- * `chrome` or `fetch` in the core today is inside a comment or a string — see
- * `parse/persist.ts`, whose error messages name the localStorage key, and
- * `api/client.ts`, whose `FetchLike` doc explains the global it is avoiding. A
- * textual scan flags all of them, is turned off within the week, and protects
+ * `chrome` or `fetch` in a layer that may not use it is inside a comment or a string.
+ * A textual scan flags all of them, is turned off within the week, and protects
  * nothing. Identifiers are the only honest unit here, so the file gets parsed.
  *
  * Adding a layer means adding it to LAYERS. That is deliberate: the last assertion
@@ -68,43 +75,43 @@ interface Layer {
   /** Layers it may import from. Its own name has to be listed to import a sibling. */
   mayImport: string[];
   /**
-   * Whether a bare (non-relative) import is allowed. False keeps a layer at zero
-   * runtime dependencies — the property that makes it cheap to consume elsewhere.
+   * Packages this layer may import by bare specifier. Empty means zero runtime
+   * dependencies. An allowlist rather than a boolean because the interesting
+   * question after the core moved to npm is not *whether* a layer has dependencies
+   * but *which* — one known package is a boundary, anything else is a bundle nobody
+   * audited.
    */
-  mayTakeDependencies: boolean;
+  mayDependOn: string[];
 }
+
+const CORE = "matrix-workouts-core";
 
 const LAYERS: Layer[] = [
   {
-    name: "core",
-    dirs: ["parse", "api", "charts", "export"],
+    /*
+     * Geometry, not pixels: data + scale -> path strings and tick positions. It sits
+     * below the view rather than inside it so the chart tests can run the real
+     * layout against every fixture with no DOM at all.
+     */
+    name: "charts",
+    dirs: ["charts"],
     mayUse: [],
-    mayImport: ["core"],
-    mayTakeDependencies: false,
+    mayImport: ["charts"],
+    mayDependOn: [CORE],
   },
   {
     name: "view",
     dirs: ["ui"],
     mayUse: ["dom"],
-    mayImport: ["core", "view"],
-    mayTakeDependencies: false,
+    mayImport: ["charts", "view"],
+    mayDependOn: [CORE],
   },
   {
     name: "extension",
     dirs: ["content", "background"],
     mayUse: ["dom", "extension", "net"],
-    mayImport: ["core", "view", "extension"],
-    mayTakeDependencies: false,
-  },
-  {
-    name: "cli",
-    dirs: ["cli"],
-    mayUse: ["node", "net"],
-    // Not `view`: a consumer outside the browser that needs the DOM to answer a
-    // question is a consumer that has taken the wrong thing. `scripts/preview.ts`
-    // is the exception and lives outside `src/` for exactly that reason.
-    mayImport: ["core", "cli"],
-    mayTakeDependencies: true,
+    mayImport: ["charts", "view", "extension"],
+    mayDependOn: [CORE],
   },
 ];
 
@@ -183,7 +190,7 @@ function read(path: string): Usage {
   return usage;
 }
 
-/** `../parse/types.js` from a file in `api/` -> the layer owning `parse/`. */
+/** `../charts/plan.js` from a file in `ui/` -> the layer owning `charts/`. */
 function layerOfImport(from: string, specifier: string): Layer | undefined {
   const target = resolve(from, "..", specifier.split("?")[0] ?? specifier);
   const rel = relative(SRC, target);
@@ -211,7 +218,8 @@ describe("layer boundaries", () => {
       expect(offences).toEqual([]);
     });
 
-    it(`${layer.name} imports only from ${layer.mayImport.join(", ")}`, () => {
+    const allowed = [...layer.mayImport, ...layer.mayDependOn].join(", ");
+    it(`${layer.name} imports only from ${allowed}`, () => {
       const offences: string[] = [];
       for (const dir of layer.dirs) {
         for (const path of sourceFilesIn(dir)) {
@@ -224,7 +232,12 @@ describe("layer boundaries", () => {
             }
 
             if (!specifier.startsWith(".")) {
-              if (!layer.mayTakeDependencies) offences.push(`${at} depends on the package ${specifier}`);
+              const root = specifier.startsWith("@")
+                ? specifier.split("/").slice(0, 2).join("/")
+                : (specifier.split("/")[0] ?? specifier);
+              if (!layer.mayDependOn.includes(root)) {
+                offences.push(`${at} depends on the package ${specifier}`);
+              }
               continue;
             }
 

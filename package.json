@@ -1,5 +1,5 @@
 {
-  "name": "full-matrix-workouts",
+  "name": "matrix-workouts-chrome",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -10,8 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "preview": "vite-node scripts/preview.ts --",
-    "history": "vite-node src/cli/history.ts --"
+    "preview": "vite-node scripts/preview.ts --"
   },
   "devDependencies": {
     "@types/jsdom": "^30.0.0",
@@ -20,5 +19,8 @@
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
     "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "matrix-workouts-core": "^0.1.0"
   }
 }

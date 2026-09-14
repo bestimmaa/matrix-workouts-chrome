@@ -1,4 +1,7 @@
-# full-matrix-workouts
+# matrix-workouts-chrome
+
+[![CI](https://github.com/bestimmaa/matrix-workouts-chrome/actions/workflows/ci.yml/badge.svg)](https://github.com/bestimmaa/matrix-workouts-chrome/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A Chrome extension that shows what your exercise bike actually recorded.
 
@@ -27,17 +30,15 @@ rebuild, reload the extension card **and** the tab.
 ## Download your history
 
 The site's own page only holds about the current week, and errors on anything older.
-The API has everything, so there is a standalone client that signs in and takes the
-lot:
+The API has everything, and the client that takes the lot ships separately:
 
 ```bash
-cp .env.example .env     # your xid and passcode
-npm run history          # -> history/
-npm run history -- --split   # plus one JSON document per ride
+npx matrix-workouts-history --split
 ```
 
-Credentials stay in `.env`, which is gitignored, and are used for one sign-in request.
-`history/` is gitignored too — those files are your heart rate.
+See [matrix-workouts-core](https://github.com/bestimmaa/matrix-workouts-core) — it is
+the parser, API client and export format this extension is built on, and it handles
+the sign-in that happens outside the browser.
 
 ## Working on it
 
@@ -53,8 +54,16 @@ All three of the first must pass before committing.
 | | |
 |---|---|
 | [AGENTS.md](AGENTS.md) | how to work on this: decisions, rules, gotchas. **Start here.** |
-| [MATRIX_API.md](MATRIX_API.md) | the undocumented API this talks to |
 | [TODO.md](TODO.md) | deferred work |
+| [CHANGELOG.md](CHANGELOG.md) | what changed, per tagged version |
 
-Unaffiliated with Matrix Fitness or Johnson Health Tech. It reads one account's own
-data, locally, and sends it nowhere.
+## Part of matrix-workouts
+
+| | |
+|---|---|
+| [matrix-workouts-core](https://github.com/bestimmaa/matrix-workouts-core) | the parser, API client and export format |
+| [matrix-workouts-chrome](https://github.com/bestimmaa/matrix-workouts-chrome) | this extension |
+| [matrix-workouts-mcp](https://github.com/bestimmaa/matrix-workouts-mcp) | an MCP server, so an AI agent can ask about your rides |
+
+MIT licensed. Unaffiliated with Matrix Fitness or Johnson Health Tech. It reads one
+account's own data, locally, and sends it nowhere.

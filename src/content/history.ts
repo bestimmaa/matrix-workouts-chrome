@@ -1,6 +1,10 @@
-import { fetchWorkoutHistory, type FetchLike, type HistoryResult } from "../api/client.js";
-import { readCredentials } from "../api/credentials.js";
-import type { ReadableStorage } from "../parse/index.js";
+import {
+  fetchWorkoutHistory,
+  readCredentials,
+  type FetchLike,
+  type HistoryResult,
+  type ReadableStorage,
+} from "matrix-workouts-core";
 
 /**
  * `FetchLike` implemented over extension messaging, so `fetchWorkoutHistory` is the

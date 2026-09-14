@@ -1,4 +1,4 @@
-import { API_ORIGIN } from "../api/client.js";
+import { API_ORIGIN } from "matrix-workouts-core";
 
 /**
  * Service worker. Its only job is to make the one cross-origin request the content

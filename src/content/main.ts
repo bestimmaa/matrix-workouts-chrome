@@ -4,9 +4,10 @@ import {
   isSupportedMachine,
   loadCachedWorkouts,
   PERSIST_KEY,
-} from "../parse/index.js";
-import { WorkoutParseError, type Workout } from "../parse/types.js";
-import { ApiError } from "../api/client.js";
+  WorkoutParseError,
+  type Workout,
+  ApiError,
+} from "matrix-workouts-core";
 import { renderDashboard } from "../ui/dashboard.js";
 import { machineLabel } from "../ui/format.js";
 import { el } from "../ui/svg.js";
