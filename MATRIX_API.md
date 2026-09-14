@@ -120,33 +120,62 @@ live: 47 records spanning 2026-01-10 to 2026-09-13 in a single 1.8 MB response.
 undocumented API is a good way to silently truncate someone's history — so a `total`
 larger than what arrived surfaces as `truncated` instead. See `src/api/client.ts`.
 
-### Record fields (snake_case)
+### Record fields
 
-`workout_id`, `id`, `model_id`, `machine_id`, `machine_type`, `exercise_title`,
-`workout_type`, `workout_source`, `workout_time`, `duration`, `distance`, `calories`,
-`average_heart_rate`, `max_heart_rate`, `min_heart_rate`, `program_type`,
-`program_id`, `program_level`, `watts_kg`, `workout_originator`,
-`integration_metadata`, `archived`, `intervals`.
+Both spellings, because both occur: the API sends the left column, the browser's
+persisted blob sends the right. This table is the single reference for the upstream
+shape — AGENTS.md carries what the fields *mean* and which of them lie, not what they
+are called.
 
-Units: `duration` seconds, `distance` **meters** (the UI renders km), heart rate bpm,
-`workout_time` ISO 8601 UTC.
+| API (snake_case) | Cache (camelCase) | Notes |
+|---|---|---|
+| `workout_id` | `workoutId` | names the ride. **Not** the URL segment |
+| `id` | `id` | document id, and the `/workouts/:id` segment the site links to |
+| `model_id` | `modelId` | the machine **model** — not the individual unit |
+| `machine_id` | `machineId` | UUID of the physical machine |
+| `machine_type` / `exercise_title` | `machineType` / `exerciseTitle` | `upright_bike`, `treadmill`, `rower`, … |
+| `workout_type` | `workoutType` | `cardio` |
+| `workout_source` | `workoutSource` | `connected` = machine-recorded |
+| `workout_time` | `workoutTime` | ISO 8601, **UTC** |
+| `duration` | `duration` | **seconds** |
+| `distance` | `distance` | **meters** (the UI renders km) |
+| `calories` | `calories` | kcal |
+| `min/max/average_heart_rate` | `min/max/averageHeartRate` | bpm |
+| `program_type` | `programType` | integer console program id (e.g. `46`) |
+| `program_id` | — | API only; all-zero UUID on every ride seen |
+| `program_level` | — | API only |
+| `watts_kg` | `wattsKg` | often `0` |
+| `workout_originator` | — | API only; empty string on every ride seen |
+| `integration_metadata` | — | API only; `{}` on every ride seen |
+| `archived` | `archived` | `0` / `1` |
+| `intervals` | `intervals` | the sample array — see below |
+
+Cache-only extras, absent from the API: `functionThresholdPower`, `peakRpm`,
+`averageRpm`, `peakSpm`, `totalStrokes` (often `0`, several machine-type specific),
+and `totalSweatScore`, `sprintScores`, `sprint8ProgramLevel` on **Sprint 8 rides only**.
+
+**Field presence is not a promise.** `program_level` and `sprint8ProgramLevel` have
+already disappeared from records that still carry the Sprint 8 scores. Never assume a
+field is meaningful just because it is present and zero.
 
 ### Interval fields — the reason this project exists
 
 Each entry in `intervals` is one ~10-second sample:
 
-| Field | Notes |
-|---|---|
-| `duration` | seconds this sample covers; the last one is usually short |
-| `distance` | meters in this sample |
-| `average_distance` | cumulative meters — **not** an average, despite the name |
-| `speed` | km/h |
-| `rpm` | **cadence** |
-| `power` | **watts** |
-| `resistance` | **console resistance level** |
-| `heart_rate` | bpm, `0` on a chest-strap dropout |
-| `incline` | always `0` on bikes |
-| `total_steps` | populated on bikes too |
+| API | Cache | Unit | Notes |
+|---|---|---|---|
+| `power` | `power` | watts | **not in the stock UI** |
+| `resistance` | `resistance` | console level (1–30 observed) | **not in the stock UI** — discrete, moves in steps |
+| `rpm` | `rpm` | cadence | **not in the stock UI** |
+| `speed` | `speed` | km/h | |
+| `heart_rate` | `heartRate` | bpm | `0` on a chest-strap dropout |
+| `incline` | `incline` | % | treadmill-relevant; `0` on a bike |
+| `average_distance` | `averageDistance` | meters | **cumulative** distance, despite the name |
+| `distance` | `distance` | meters | per-sample delta |
+| `duration` | `duration` | seconds | `10` for every sample but the last, a partial (0–11) |
+| `total_steps` | `totalSteps` | count | populated on bikes too |
+
+Sample count × 10 s ≈ the record's `duration`.
 
 **`rpm`, `power` and `resistance` appear nowhere in the stock UI.** The stock detail
 page shows six tiles: distance, avg incline, avg heart rate, calories, duration, avg

@@ -11,6 +11,55 @@ calories, duration, avg speed. The underlying record additionally contains a
 level, and cadence (rpm)** — none of which appear anywhere in the stock UI. Those
 three are the reason this project exists.
 
+That paragraph is the argument. README.md makes it to a person; this file is for
+whoever has to work on the thing.
+
+---
+
+## What belongs in this file
+
+Four documents, one job each. Putting something in the wrong one is how it rots.
+
+| File | Holds |
+|---|---|
+| `README.md` | what this is, why, and how to run it. For someone arriving cold. |
+| `AGENTS.md` | how to work on it — decisions, rules, and gotchas that already cost a bug. |
+| `MATRIX_API.md` | the upstream API: endpoints, wire shapes, units, what is verified. |
+| `TODO.md` | deferred work, with enough context to pick up cold. |
+
+**Write it here if it is:**
+
+- a **decision** and the reason behind it — especially one whose reason is not
+  visible in the code ("no charting library, and here is what would change that")
+- a **rule** stated with the failure it prevents ("never read `raw` to dodge the
+  normalized model")
+- a **gotcha someone already hit** — the two-ids bug, the isolated-world trap. The
+  bug is the evidence; keep it.
+- a **measurement**, dated, where it is evidence for a claim ("localStorage had 2
+  workouts while the API had 43, 10 Sep 2026")
+- a **boundary** — what this project is not for, and what not to build
+
+**Do not write it here if it is:**
+
+- **something the code already says.** Type definitions, signatures, file listings.
+  Anything true only until the next refactor belongs next to the code, where it gets
+  refactored too.
+- **the upstream wire shape.** Field names, key styles, units → MATRIX_API.md.
+- **a task.** → TODO.md. A *decision* about a task still belongs here.
+- **onboarding.** How to install, load and run → README.md.
+- **a log.** No changelogs, session notes, dated progress, ticket trails or "as of
+  this commit". Git holds that, and it holds it better.
+- **a number that will quietly go stale.** Exact counts drift. Either date it as a
+  measurement, or write the shape of the claim instead ("every ride on the account",
+  not "43 workouts").
+
+**Say it once.** A fact in two files is one fact and one future lie. Cross-link
+instead — and when the two disagree, the file that owns the subject wins.
+
+**Keep the argument, cut the recital.** This file is long because the reasoning is
+load-bearing. It is not a place to be exhaustive for its own sake: if a section does
+not change what someone would *do*, it does not need to be here.
+
 ---
 
 ## Required commands
@@ -196,22 +245,8 @@ detail, including the four fields the API sends that the cache does not.
 
 ### Workout record
 
-| Field | Notes |
-|---|---|
-| `workoutId` | names the ride. **Not** the URL segment — see "Two ids, not one" |
-| `id` | the record's document id, and the `/workouts/:id` segment the site links to |
-| `machineType` / `exerciseTitle` | `upright_bike`, `treadmill`, `rower`, … |
-| `machineId` | UUID of the physical machine |
-| `programType` | integer console program id (e.g. `46`) |
-| `workoutTime` | ISO 8601, UTC |
-| `duration` | **seconds** |
-| `distance` | **meters** (the UI renders km) |
-| `calories` | kcal |
-| `min/max/averageHeartRate` | bpm |
-| `workoutSource` | `connected` = machine-recorded |
-| `intervals` | the sample array — see below |
-| `wattsKg`, `functionThresholdPower`, `peakRpm`, `averageRpm`, `peakSpm`, `totalStrokes` | often `0`; several are machine-type specific |
-| `totalSweatScore`, `sprintScores`, `sprint8ProgramLevel` | **Sprint 8 rides only** — see Program modes |
+**Field tables live in MATRIX_API.md**, in both key styles, with units. What follows
+is what those fields *mean* here — the parts that have cost us a bug.
 
 **The upstream shape has changed at least once, and the fixtures straddle it.**
 Read live on 11 Sep 2026, the cached records carry `id` and no longer carry
@@ -223,7 +258,7 @@ caption drops its `· level N` clause. Treat it as the standing warning that thi
 shape moves without notice, which is the entire reason the export carries
 `source.record`.
 
-`modelId` sits outside that table and is easy to lose: **the machine *model*
+`modelId` is easy to lose: **the machine *model*
 (`5bcf75c1…` for both bikes seen) — which is not `machineId`, the UUID of the
 individual physical unit.** It is called out here because the first real export
 caught two fixtures missing it along with `id`: `raw-6aa04566…` and `raw-6aa194a0…`
@@ -278,21 +313,14 @@ either one still parses.
 
 ### Interval sample (one per 10 s)
 
-| Field | Unit | Notes |
-|---|---|---|
-| `power` | watts | **not in the stock UI** |
-| `resistance` | console level (1–30 observed) | **not in the stock UI** — discrete, changes in steps |
-| `rpm` | cadence | **not in the stock UI** |
-| `speed` | km/h | |
-| `heartRate` | bpm | see dropouts below |
-| `incline` | % | treadmill-relevant; `0` on a bike |
-| `averageDistance` | meters | **cumulative** distance, despite the name |
-| `distance` | meters | per-sample delta |
-| `duration` | seconds | `10` for every sample except the last, which is a partial (0–11) |
-| `totalSteps` | count | treadmill-relevant |
+**Field table in MATRIX_API.md.** Three things about it matter to code in this repo:
 
-Sample count × 10 s ≈ `duration`. Field presence is machine-type dependent — never
-assume a field is meaningful just because it is present and zero.
+- **`power`, `resistance` and `rpm` are the entire reason this project exists.** None
+  of the three appears anywhere in the stock UI.
+- **`averageDistance` is cumulative distance, not an average.** The name is a lie and
+  reading it as one produces a plausible, wrong chart.
+- **Field presence is machine-type dependent.** Never assume a field is meaningful
+  just because it is present and zero.
 
 ### Program modes (`programType`)
 
