@@ -91,10 +91,12 @@ not delete the first.
 
 All three must pass before committing.
 
-**Until `matrix-workouts-core@0.1.0` is on npm, `npm install` here cannot resolve it.**
-Link the sibling checkout instead — `npm link` in `../core`, then
-`npm link matrix-workouts-core` here — and run `npm install --package-lock-only` once
-the package is published, so the lockfile stops being a promise nobody can keep.
+To work on the core and the extension together, `npm link` the sibling checkout —
+`npm link` in `matrix-workouts-core`, then `npm link matrix-workouts-core` here — and
+`npm install matrix-workouts-core` to go back to the published copy. Note **`npm
+unlink` is an alias for `npm uninstall`**: it strips the dependency out of
+`package.json` rather than just dropping the symlink, and the next install then
+quietly omits the one package that matters.
 
 Load the extension via `chrome://extensions` → Developer mode → *Load unpacked* →
 `dist/`. After a rebuild, reload the extension card **and** the target tab —
