@@ -1,12 +1,17 @@
-import { buildPanel, elapsedScale, type PanelGeometry } from "../charts/panel.js";
-import { LAYOUT, PANEL_HEIGHT, PLOT_BOTTOM } from "../charts/layout.js";
-import { nearestIndex } from "../charts/series.js";
-import { niceDomain, type LinearScale } from "../charts/scale.js";
-import { planWorkout } from "../charts/plan.js";
 import {
+  LAYOUT,
+  PANEL_HEIGHT,
+  PLOT_BOTTOM,
+  buildPanel,
+  elapsedScale,
   exportFilename,
   heartRateStats,
+  nearestIndex,
+  niceDomain,
+  planWorkout,
   workoutExportJson,
+  type LinearScale,
+  type PanelGeometry,
   type Workout,
 } from "matrix-workouts-core";
 import { downloadJson } from "./download.js";

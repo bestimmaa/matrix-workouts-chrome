@@ -89,28 +89,23 @@ const CORE = "matrix-workouts-core";
 const LAYERS: Layer[] = [
   {
     /*
-     * Geometry, not pixels: data + scale -> path strings and tick positions. It sits
-     * below the view rather than inside it so the chart tests can run the real
-     * layout against every fixture with no DOM at all.
+     * The chart geometry used to live here, as a layer of its own. It moved into
+     * `matrix-workouts-core` when the iOS app needed to draw the same panels through
+     * `react-native-svg` — a path `d` string is a `d` string in either renderer, and
+     * a second copy of the layout would have been the first place the two drifted.
+     * `ui/` now imports it from the package like everything else.
      */
-    name: "charts",
-    dirs: ["charts"],
-    mayUse: [],
-    mayImport: ["charts"],
-    mayDependOn: [CORE],
-  },
-  {
     name: "view",
     dirs: ["ui"],
     mayUse: ["dom"],
-    mayImport: ["charts", "view"],
+    mayImport: ["view"],
     mayDependOn: [CORE],
   },
   {
     name: "extension",
     dirs: ["content", "background"],
     mayUse: ["dom", "extension", "net"],
-    mayImport: ["charts", "view", "extension"],
+    mayImport: ["view", "extension"],
     mayDependOn: [CORE],
   },
 ];

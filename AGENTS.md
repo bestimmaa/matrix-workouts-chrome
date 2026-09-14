@@ -120,8 +120,9 @@ crosshair is inert there; it needs the live listeners.
 
 ## Status
 
-Built, the suite green: the chart geometry layer (`src/charts/`), the view
-(`src/ui/`), and the MV3 content script (`src/content/`). The extension loads, puts
+Built, the suite green: the view (`src/ui/`) and the MV3 content script
+(`src/content/`). The chart geometry it draws now lives in `matrix-workouts-core`.
+The extension loads, puts
 its pill on `/workouts/:id`, and renders every fixture in both themes once that pill
 is used.
 
@@ -151,7 +152,7 @@ acts on it: a
 treadmill or rower ride gets no pill and no takeover, and the toolbar icon explains
 itself there instead of drawing panels about channels the machine may not report.
 See "Deciding what to take over" below. The parse layer stays machine-agnostic
-because that costs nothing and the upstream shape is shared, and `src/charts/plan.ts`
+because that costs nothing and the upstream shape is shared, and core's `charts/plan.ts`
 keeps its
 speed/incline fallbacks (guarded, tested as inert on bikes) so a non-bike record
 degrades into something readable rather than an exception. Neither is a promise
@@ -168,10 +169,8 @@ Three layers. Which layer a directory belongs to decides what it may touch, and
 `src/layers.test.ts` enforces it — see below.
 
 ```
-matrix-workouts-core       the package underneath all of it: parse, api, export
+matrix-workouts-core       the package underneath all of it: parse, api, export, charts
 src/
-  charts — no platform underneath it at all
-    charts/      chart geometry (data + scale -> path strings, ticks)
   view — DOM, and nothing more
     ui/          layout, readout console, stat tiles, icons, table view
   extension — DOM + chrome.* + the network
@@ -187,17 +186,21 @@ Decisions taken up front (revisit deliberately, don't drift):
 - **Take over the stock detail view in place** rather than adding a side panel —
   the point is to replace the limited dashboard, not sit next to it. *In place*, but
   **only when asked**: see the default-collapsed rule below.
-- **Hand-authored SVG charts, no runtime charting library.** See below.
+- **Hand-authored SVG charts, no runtime charting library.** The decision is still
+  live and still binding, but the code it governs moved to `matrix-workouts-core` in
+  Sep 2026 so the iOS app could draw the same panels through `react-native-svg`. The
+  argument for it is below and is kept here because this is where it was made and
+  measured; the geometry it describes is core's.
 - **One dependency, and it is ours.** `matrix-workouts-core` has no dependencies of
   its own, so the bundle is still one IIFE that makes no network request of any kind.
   `src/layers.test.ts` holds an allowlist rather than a yes/no, so a second package
   cannot arrive without someone deciding it should.
 - **The core stays pure and platform-free** so it is unit-testable against fixtures
   without a browser — and so anything else can consume it, which is now literally
-  true. Concretely: `charts/` emits *geometry* — path `d` strings, tick positions,
-  scales — and `ui/` turns that into elements. Nothing in `charts/` may name
-  `document`, `chrome`, `fetch` or a `node:` module. This is a **test, not a
-  convention**: see "The layering" below.
+  true — twice over, since the iOS app consumes it too. Concretely: core's `charts/`
+  emits *geometry* — path `d` strings, tick positions, scales — and `ui/` turns that
+  into elements. That split is why the same layout survives a renderer it was not
+  written for. This is a **test, not a convention**: see "The layering" below.
 - The site is a React SPA: routes change **without a page load**. The content
   script must observe navigation, not just run once at `document_idle` — and see
   the isolated-world trap below, because the obvious way to do that does not work.
@@ -274,18 +277,24 @@ The awkward part the old note predicted turned out to be the easy part.
 join the shared package — and it did not need to. The cut ran below `charts/`
 instead, which is exactly where the platform boundary already was.
 
-**Two rules survive the move and are what the test now defends:**
+**The cut moved again in Sep 2026, and in the same direction.** `charts/` itself went
+into the package when the iOS app needed the same panels, which is what "the platform
+boundary is where the cut goes" predicts once a second renderer exists. What is left
+here is what genuinely cannot leave: elements, styles and the page.
 
-- `charts/` stands on nothing. A chart reaching for `document` is untestable against
-  fixtures without a browser, which is the only reason the chart tests are quick.
+**One rule survives both moves and is what the test now defends:**
+
 - `mayDependOn` is an allowlist. One package, deliberately chosen, shared with the
   MCP server. The IIFE bundle and the no-network promise in README depend on that
   list staying at one entry.
 
-**A consumer that is not JavaScript does not want a package anyway.** A phone app
-writing rides into HealthKit cannot import any of this. What it consumes is the export
-document, so *that* is the interface it depends on, and it is pinned by a contract
-test in the core repo.
+**The phone app was predicted here as a non-consumer, and that prediction was wrong.**
+It was written in React Native, so it imports the package like this repo does — and it
+took `charts/` with it. The export document remains the interface for a reader that is
+genuinely not JavaScript, pinned by a contract test in the core repo. The lesson for
+this file is narrower than the original claim: you cannot predict what the next
+consumer stands on, so the boundary is worth keeping clean even when no one is asking
+for it yet.
 
 **`scripts/` is not a layer and never was.** `scripts/preview.ts` is a development aid
 that renders fixtures to HTML, and it is the one thing allowed to reach into `ui/` —
@@ -416,7 +425,7 @@ reason that survives all four of these.**
   kits (Recharts, Victory, Nivo) would ship a second React into a page that already
   has one.
 
-`src/charts/scale.ts` and `src/charts/series.ts` are the ~150 lines this replaces:
+core's `charts/scale.ts` and `charts/series.ts` are the ~150 lines this replaces:
 a linear scale, a 1/2/5 tick algorithm, and line/step/area path builders.
 `d3-scale` + `d3-shape` (pure, tree-shakeable, ~16 kB) are the sanctioned swap if
 that maths ever gets fiddly — but *only* those two. `d3-selection`, `d3-axis` and
@@ -456,7 +465,7 @@ suggestions:
 - **Lead with the variable the console was holding.** A target-watts ride should put
   power front and centre with the target blocks marked; a target-HR ride should lead
   with heart rate against its target; a fitness test should show the stage staircase.
-  Same telemetry, different headline. Implemented in `src/charts/plan.ts`, which
+  Same telemetry, different headline. Implemented in core's `charts/plan.ts`, which
   orders panels off `controlSignature` first and `programType` second, and prints
   the reason it chose in the page's lede so the ordering is never magic.
 - **Categorical palette, in fixed slot order** — power `#3987e5`, resistance
@@ -484,7 +493,7 @@ suggestions:
   resistance; a test asserts no workout ever renders two panels in one slot.
 - **Do not plot speed beside power on a bike.** The console derives it from power
   and cadence, so it is a third view of the same thing — and it would have to
-  borrow power's slot to say it. `src/charts/plan.ts` drops it.
+  borrow power's slot to say it. Core's `charts/plan.ts` drops it.
 - **Design both themes** via CSS custom properties: bare `:root` for light,
   `@media (prefers-color-scheme: dark)` guarded with `:root:not([data-theme="light"])`,
   and `:root[data-theme="dark"]`. Never define a color only inside a media block.
@@ -498,7 +507,7 @@ suggestions:
 - Charts are keyboard-operable and carry an accessible label.
 
 `reference/prototype-telemetry.html` is the standalone page that motivated this
-project. It has now been **ported** into `src/charts/` + `src/ui/` — layout
+project. It has now been **ported** into `charts/` + `src/ui/` — layout
 constants, caption structure, crosshair behaviour and table view all come from it.
 Keep it as the reference for *what a panel is*; it is frozen, so when the two
 disagree, the code is what ships. It is no longer the reference for how the page
@@ -599,14 +608,15 @@ instead rather than committing the normalized numbers.
 Treadmill and rower fixtures are deliberately **not** being collected — see Scope
 above. If that changes, note that those records populate different fields
 (`totalSteps`, `incline`, `totalStrokes`, `peakSpm`) and will break assumptions
-built on bikes alone; the machine-type branches in `src/charts/plan.ts` are
+built on bikes alone; the machine-type branches in core's `charts/plan.ts` are
 reasoned from the field list, never verified against a real record.
 
-Chart tests (`src/charts/charts.test.ts`) run the geometry against every fixture and
-assert the conventions directly: no `NaN` in any emitted path, one palette slot per
-panel, a step path for resistance and a line path for power, every non-zero baseline
-labelled, and dropouts nulled rather than zeroed. **Add the assertion when you add
-the rule** — a convention nothing checks is a convention that drifts.
+Chart tests **run in the core repo now**, not here — `charts/charts.test.ts` went with
+the geometry. They run it against every fixture and assert the conventions directly: no
+`NaN` in any emitted path, one palette slot per panel, a step path for resistance and a
+line path for power, every non-zero baseline labelled, and dropouts nulled rather than
+zeroed. **Add the assertion when you add the rule** — a convention nothing checks is a
+convention that drifts, and the rule now has two renderers to drift in.
 
 View tests (`src/ui/dashboard.test.ts`) run under `// @vitest-environment jsdom` and
 cover the DOM: accessible labels, arrow-key scrubbing, the dropout readout, the
