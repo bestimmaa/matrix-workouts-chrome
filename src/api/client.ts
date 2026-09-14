@@ -25,7 +25,15 @@ export class ApiError extends Error {
 }
 
 /** Just the part of `fetch` we use, so tests need no network and no globals. */
-export type FetchLike = (url: string, init: { headers: Record<string, string> }) => Promise<{
+export interface FetchInit {
+  headers: Record<string, string>;
+  /** Absent means GET. Only the sign-in request sets this. */
+  method?: string;
+  /** Already-serialized JSON, for the one request that has a body. */
+  body?: string;
+}
+
+export type FetchLike = (url: string, init: FetchInit) => Promise<{
   ok: boolean;
   status: number;
   json(): Promise<unknown>;

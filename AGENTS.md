@@ -42,6 +42,18 @@ npm run preview -- <workoutId>  # just one
 THEME=light npm run preview     # force the light theme
 ```
 
+```
+npm run history                 # sign in, download full history -> history/
+npm run history -- --split      # also one export document per ride
+npm run history -- --out data   # somewhere other than history/
+```
+
+`npm run history` is the **standalone client** — the only part of this project that
+runs outside the browser, and therefore the only part that handles a passcode. It
+reads `MATRIX_XID` / `MATRIX_PIN` from `.env` (gitignored; copy `.env.example`), signs
+in, and writes the verbatim API response plus an optional export document per ride.
+`history/` is gitignored. See **MATRIX_API.md** for the endpoints.
+
 `npm run preview` renders a fixture to a standalone HTML file through jsdom — the
 same DOM the content script mounts, with the stylesheet inlined. Use it to iterate
 on the design without loading the extension or having a workout in the cache. The
@@ -62,9 +74,17 @@ Also built: **JSON export** (`src/export/`). The view's header carries an *Expor
 JSON* button that writes the whole record — normalized telemetry plus the upstream
 record verbatim — to a file. See "The export format" below.
 
+Also built: a **standalone client** (`scripts/history.ts`, `npm run history`) that
+signs in with an xid and passcode and downloads the whole history outside the
+browser. It shares the parse, client and export layers with the extension — the only
+new code is `src/api/login.ts`. **MATRIX_API.md** documents the API it speaks,
+including which endpoints are verified and which were only read out of the site's
+bundle.
+
 Not built: anything that uses history in aggregate (trends across rides, a power
 curve, sprint-to-sprint comparison). The client returns the whole list; only the one
-requested workout is currently rendered from it.
+requested workout is currently rendered from it. The standalone client now puts that
+whole list on disk, which is the obvious place to start.
 
 **Scope: the indoor bike only, and this is now enforced rather than merely
 intended.** Both bike types (upright and recumbent) are covered by fixtures and are
@@ -117,12 +137,23 @@ bundle but answers 403 — do not use it.) Bearer token sits at
 
 ```
 GET  /exerciser/{id}/workouts        <- FULL history, intervals included
-POST /exerciser/login
+POST /exerciser/login                <- xid + passcode -> { id, token }
 POST /exerciser/exchange_token_for_exerciser
 POST /exerciser/register
 POST /exerciser/validate
 GET  /exerciser/{id}
 ```
+
+**MATRIX_API.md is the full reference** — request and response shapes, units, the
+interval fields, and a note on every endpoint saying whether it was verified live or
+merely read out of the bundle. Read it before touching `src/api/`.
+
+`POST /exerciser/login` takes `{ username: xid, password: pin, type: "xid", club_id: 0 }`
+and answers with a flat profile carrying `id` and `token`. `src/api/login.ts` returns
+only those two: the response also holds name, email, birthday and weight, none of
+which any later call needs. The extension never calls it — in the browser the token is
+already in `localStorage`, which is strictly better because no passcode is handled at
+all.
 
 `GET /workouts/{id}` is in the bundle but answers 404; fetch the list and filter.
 The list response is `{ workouts, messages, paging }` and returns complete records

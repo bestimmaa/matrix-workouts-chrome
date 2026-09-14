@@ -6,4 +6,6 @@ dist/
 coverage/
 .env
 .env.*
+!.env.example
 preview/
+history/

@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "preview": "vite-node scripts/preview.ts --"
+    "preview": "vite-node scripts/preview.ts --",
+    "history": "vite-node scripts/history.ts --"
   },
   "devDependencies": {
     "@types/jsdom": "^30.0.0",

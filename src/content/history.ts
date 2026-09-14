@@ -8,6 +8,14 @@ import type { ReadableStorage } from "../parse/index.js";
  * See src/background/main.ts for why the request cannot be made from here.
  */
 const viaServiceWorker: FetchLike = async (url, init) => {
+  // The worker's message contract carries a url and headers and nothing else, so a
+  // request with a body would be silently downgraded to a GET. Nothing in the
+  // extension makes one — sign-in is the standalone client's problem, not ours —
+  // and this makes sure that stays true instead of failing quietly if it changes.
+  if (init.method && init.method !== "GET") {
+    throw new Error(`The background worker only makes GET requests, not ${init.method}.`);
+  }
+
   const reply = (await chrome.runtime.sendMessage({
     type: "apiFetch",
     url,

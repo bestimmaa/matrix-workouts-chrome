@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ApiError, fetchWorkoutHistory, workoutsUrl, type FetchLike } from "./client.js";
+import { ApiError, fetchWorkoutHistory, workoutsUrl, type FetchInit, type FetchLike } from "./client.js";
+import { loginWithXid } from "./login.js";
 import { readCredentials, redact } from "./credentials.js";
 import { WorkoutParseError } from "../parse/types.js";
 import { findWorkout } from "../parse/index.js";
@@ -195,5 +196,109 @@ describe("fetchWorkoutHistory", () => {
     expect((error as ApiError).message).not.toContain(TOKEN);
     expect((error as ApiError).message).toContain("[token]");
     expect((error as ApiError).status).toBe(0);
+  });
+});
+
+describe("loginWithXid", () => {
+  const PIN = "1234";
+
+  /** A stub that records what it was asked to send, so the shape can be asserted. */
+  function capturing(body: unknown, status = 200) {
+    const seen: { url?: string; init?: FetchInit } = {};
+    const impl: FetchLike = async (url, init) => {
+      seen.url = url;
+      seen.init = init;
+      return { ok: status >= 200 && status < 300, status, json: async () => body };
+    };
+    return { impl, seen };
+  }
+
+  it("sends the request shape the site's own bundle sends", async () => {
+    const { impl, seen } = capturing({ id: "ex-1", token: TOKEN });
+    await loginWithXid({ xid: "4200000", pin: PIN }, impl);
+
+    expect(seen.url).toBe("https://apollo.jfit.co/exerciser/login");
+    expect(seen.init?.method).toBe("POST");
+    // Field names are the API's, not ours: xid goes in `username`, pin in `password`.
+    expect(JSON.parse(seen.init?.body ?? "{}")).toEqual({
+      username: "4200000",
+      password: PIN,
+      type: "xid",
+      club_id: 0,
+    });
+  });
+
+  it("reads the credentials out of the top level of the profile", async () => {
+    const { impl } = capturing({ id: "ex-1", token: TOKEN, email: "rider@example.com" });
+    await expect(loginWithXid({ xid: "4200000", pin: PIN }, impl)).resolves.toEqual({
+      exerciserId: "ex-1",
+      token: TOKEN,
+    });
+  });
+
+  it("carries out the credentials and nothing else of the profile", async () => {
+    // The login response is a full profile — name, email, birthday, weight. None of
+    // it is needed to fetch workouts, so none of it should leave this function.
+    const { impl } = capturing({
+      id: "ex-1",
+      token: TOKEN,
+      first_name: "Real",
+      last_name: "Person",
+      email: "rider@example.com",
+      birthday: "1980-01-01",
+      weight: 80,
+    });
+    const credentials = await loginWithXid({ xid: "4200000", pin: PIN }, impl);
+    expect(Object.keys(credentials).sort()).toEqual(["exerciserId", "token"]);
+  });
+
+  it("honours a club id when one is given", async () => {
+    const { impl, seen } = capturing({ id: "ex-1", token: TOKEN });
+    await loginWithXid({ xid: "4200000", pin: PIN, clubId: 7 }, impl);
+    expect(JSON.parse(seen.init?.body ?? "{}").club_id).toBe(7);
+  });
+
+  it("explains a rejected xid and passcode without echoing the passcode", async () => {
+    const { impl } = capturing({ message: "bad" }, 401);
+    await expect(loginWithXid({ xid: "4200000", pin: PIN }, impl)).rejects.toThrow(
+      /rejected that xid and passcode/i,
+    );
+    await expect(loginWithXid({ xid: "4200000", pin: PIN }, impl)).rejects.not.toThrow(
+      new RegExp(PIN),
+    );
+  });
+
+  it("keeps the passcode out of a transport failure", async () => {
+    const leaky: FetchLike = async () => {
+      throw new Error(`POST /exerciser/login {"password":"${PIN}"} failed`);
+    };
+    await expect(loginWithXid({ xid: "4200000", pin: PIN }, leaky)).rejects.toThrow(
+      /\[token\]/,
+    );
+    await expect(loginWithXid({ xid: "4200000", pin: PIN }, leaky)).rejects.not.toThrow(
+      new RegExp(PIN),
+    );
+  });
+
+  it("reports a sign-in that returns no token", async () => {
+    const { impl } = capturing({ id: "ex-1" });
+    await expect(loginWithXid({ xid: "4200000", pin: PIN }, impl)).rejects.toThrow(/no token/i);
+  });
+
+  it("reports a sign-in that returns no exerciser id", async () => {
+    const { impl } = capturing({ token: TOKEN });
+    await expect(loginWithXid({ xid: "4200000", pin: PIN }, impl)).rejects.toThrow(
+      /no exerciser id/i,
+    );
+  });
+
+  it("reports a response that is not a profile at all", async () => {
+    const { impl } = capturing("nope");
+    await expect(loginWithXid({ xid: "4200000", pin: PIN }, impl)).rejects.toThrow(ApiError);
+  });
+
+  it("names the status when the API is failing", async () => {
+    const { impl } = capturing({}, 503);
+    await expect(loginWithXid({ xid: "4200000", pin: PIN }, impl)).rejects.toThrow(/503/);
   });
 });
