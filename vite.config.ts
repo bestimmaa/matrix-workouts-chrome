@@ -29,6 +29,12 @@ export default defineConfig(({ mode }) => {
       target: "es2022",
       modulePreload: false,
       cssCodeSplit: false,
+      // The share card's two fonts are inlined into content.js, never emitted as
+      // files. An emitted file would be fetched relative to the *site's* page —
+      // a request this extension must not make, and a 404 there anyway. Vite's own
+      // limit is 4 KB, which Instrument Sans (30 KB) is over, and an `?inline`
+      // query did not override it on 5.4 — this line is the whole mechanism.
+      assetsInlineLimit: (file: string) => (file.endsWith(".woff2") ? true : undefined),
       rollupOptions: {
         input: { [name]: target.entry },
         output: {

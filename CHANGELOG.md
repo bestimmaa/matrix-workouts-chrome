@@ -6,6 +6,14 @@ The version history source of truth is git tags in the format `vMAJOR.MINOR.PATC
 
 ## [Unreleased]
 
+### Added
+
+- **Share image** in the view's header: save the ride as a PNG to post, as a 9:16
+  story or a 4:5 feed post. The card comes from `matrix-workouts-core` 0.3.0's
+  `share/`; the extension rasterizes it locally and downloads it. Nothing is uploaded.
+- The card's two fonts, Doto and Instrument Sans (Latin subset, SIL OFL), inlined
+  into the content script and used only inside the share image.
+
 ### Changed
 
 - The parser, API client and export format are now `matrix-workouts-core`, an npm

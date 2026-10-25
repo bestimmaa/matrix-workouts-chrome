@@ -29,3 +29,13 @@ declare namespace chrome.action {
 declare namespace chrome.tabs {
   function sendMessage(tabId: number, message: unknown): Promise<unknown>;
 }
+
+/**
+ * A font, inlined at build time as a `data:` URL by `assetsInlineLimit` in
+ * vite.config.ts — not by an `?inline` query, which Vite 5.4 ignored for a file over
+ * its 4 KB limit. See `src/ui/fonts/README.md`.
+ */
+declare module "*.woff2" {
+  const dataUrl: string;
+  export default dataUrl;
+}

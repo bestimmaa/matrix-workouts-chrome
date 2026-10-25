@@ -27,6 +27,10 @@ Then `chrome://extensions` → Developer mode → *Load unpacked* → `dist/`.
 Open any ride at `/workouts/:id` and use the pill the extension adds. After a
 rebuild, reload the extension card **and** the tab.
 
+The view's header has **Share image**, which saves the ride as a picture to post — a
+9:16 story or a 4:5 feed post — and **Export JSON**, which saves the whole record.
+Both are downloads made by your browser; nothing is uploaded.
+
 ## Download your history
 
 The site's own page only holds about the current week, and errors on anything older.

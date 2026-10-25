@@ -14,7 +14,8 @@ import {
   type PanelGeometry,
   type Workout,
 } from "matrix-workouts-core";
-import { downloadJson } from "./download.js";
+import { downloadBlob, downloadJson } from "./download.js";
+import { shareCardPng, shareFilename } from "./share.js";
 import { clock, hms, km, longDate, machineLabel, modeLabel } from "./format.js";
 import { icon } from "./icons.js";
 import { el, svg } from "./svg.js";
@@ -72,10 +73,94 @@ function topBar(workout: Workout, options: DashboardOptions): HTMLElement {
     stock,
     el("div", { class: "date", text: longDate(workout.startedAt) }),
     el("div", { class: "actions" }, [
+      shareMenu(workout),
       exportButton(workout),
       el("div", { class: "ident", text: "Full Matrix Workouts" }),
     ]),
   ]);
+}
+
+/**
+ * Save the ride as a picture to post — the one thing this view makes that is meant to
+ * leave the machine, and the rider is the one who takes it there.
+ *
+ * Two sizes, because the two places people post want different shapes: a 9:16 story
+ * and a 4:5 feed post. Both come from the same card in core; this only rasterizes it
+ * and hands the PNG to the browser's download, exactly like the JSON export. Nothing
+ * is uploaded, and the card carries less than the export does — no 10-second series,
+ * no account, no machine id.
+ *
+ * A menu rather than two buttons: the bar's right slot already holds the export and
+ * the signature, and on a narrow viewport only the glyphs survive.
+ */
+const SHARE_FORMATS = [
+  { format: "story", text: "Story, 9:16" },
+  { format: "feed", text: "Feed post, 4:5" },
+] as const;
+
+function shareMenu(workout: Workout): HTMLElement {
+  const action = barAction(
+    "image",
+    ["Share image", "Save this ride as an image"],
+    "Save this ride as a picture to post. Saved by your browser; nothing is uploaded.",
+    { "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": "sharemenu" },
+  );
+  const button = action.button;
+  // One render at a time: each is a 1080-wide canvas and a download, and a second
+  // click while the first is running would save the picture twice.
+  let rendering = false;
+
+  const items = SHARE_FORMATS.map(({ format, text }) => {
+    const item = el("button", { type: "button", role: "menuitem", text });
+    item.addEventListener("click", async () => {
+      close();
+      button.focus();
+      if (rendering) return;
+      rendering = true;
+      action.say("Rendering…", "Rendering the image");
+      try {
+        downloadBlob(shareFilename(workout, format), await shareCardPng(workout, format));
+        action.flash("Saved", "Image saved");
+      } catch {
+        // Deliberately without the error, like the export: say enough, quote nothing.
+        action.flash("Image failed", "Image failed");
+      } finally {
+        rendering = false;
+      }
+    });
+    return item;
+  });
+  const menu = el("div", { id: "sharemenu", class: "sharemenu", role: "menu", hidden: "" }, items);
+  const wrap = el("div", { class: "share" }, [button, menu]);
+
+  const open = () => {
+    menu.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    items[0]!.focus();
+  };
+  const close = () => {
+    menu.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+  };
+  button.addEventListener("click", () => (menu.hidden ? open() : close()));
+  wrap.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !menu.hidden) {
+      close();
+      button.focus();
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      const at = items.indexOf(event.target as HTMLButtonElement);
+      if (at === -1) return;
+      event.preventDefault();
+      items[(at + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]!.focus();
+    }
+  });
+  // Focus leaving the menu closes it — Tab out of it included; a click elsewhere
+  // moves focus, so it closes too.
+  wrap.addEventListener("focusout", (event) => {
+    if (!wrap.contains(event.relatedTarget as Node | null)) close();
+  });
+  return wrap;
 }
 
 /**
@@ -91,39 +176,61 @@ function topBar(workout: Workout, options: DashboardOptions): HTMLElement {
  * doubt it — so the button says where the file goes before they press it.
  */
 function exportButton(workout: Workout): HTMLButtonElement {
-  const label = el("span", { class: "label", text: "Export JSON" });
-  const button = el("button", {
-    type: "button",
-    class: "baraction",
-    title:
-      `Download this workout's full record, telemetry included, as ` +
+  const action = barAction(
+    "download",
+    ["Export JSON", "Export this workout as JSON"],
+    `Download this workout's full record, telemetry included, as ` +
       `${exportFilename(workout)}. Saved by your browser; nothing is uploaded.`,
-  }, [icon("download"), label]);
-
-  // The visible label is hidden on a narrow viewport, where there is no room for it
-  // beside the date — so the accessible name lives on the button rather than in the
-  // text, and moves with it. The glyph is `aria-hidden` and cannot name anything.
-  const say = (visible: string, spoken: string) => {
-    label.textContent = visible;
-    button.setAttribute("aria-label", spoken);
-  };
-  say("Export JSON", "Export this workout as JSON");
-
-  button.addEventListener("click", () => {
+  );
+  action.button.addEventListener("click", () => {
     try {
       downloadJson(exportFilename(workout), workoutExportJson(workout));
       // Chrome's own download bubble can be dismissed or off-screen, so the button
       // confirms for itself; a click that produced nothing visible reads as broken.
-      say("Saved", "Export saved");
+      action.flash("Saved", "Export saved");
     } catch {
       // Deliberately without the error: it can quote what was being written, and
       // that is the user's heart rate. The button says enough.
-      say("Export failed", "Export failed");
+      action.flash("Export failed", "Export failed");
     }
-    setTimeout(() => say("Export JSON", "Export this workout as JSON"), 2500);
   });
+  return action.button;
+}
 
-  return button;
+/**
+ * A text-and-glyph action in the black bar that can report what it just did.
+ *
+ * The visible label is hidden on a narrow viewport, where there is no room for it
+ * beside the date — so the accessible name lives on the button rather than in the
+ * text, and moves with it. The glyph is `aria-hidden` and cannot name anything.
+ *
+ * `flash` shows an outcome and returns to idle after a moment; any later `say` or
+ * `flash` cancels that return, so a second click can never have its own message
+ * overwritten by the first one's timer.
+ */
+function barAction(
+  glyph: string,
+  [idleText, idleName]: readonly [string, string],
+  title: string,
+  attrs: Record<string, string> = {},
+): { button: HTMLButtonElement; say(visible: string, spoken: string): void; flash(visible: string, spoken: string): void } {
+  const label = el("span", { class: "label" });
+  const button = el("button", { type: "button", class: "baraction", title, ...attrs }, [icon(glyph), label]);
+  let reset: ReturnType<typeof setTimeout> | undefined;
+  const say = (visible: string, spoken: string) => {
+    clearTimeout(reset);
+    label.textContent = visible;
+    button.setAttribute("aria-label", spoken);
+  };
+  say(idleText, idleName);
+  return {
+    button,
+    say,
+    flash(visible, spoken) {
+      say(visible, spoken);
+      reset = setTimeout(() => say(idleText, idleName), 2500);
+    },
+  };
 }
 
 /**

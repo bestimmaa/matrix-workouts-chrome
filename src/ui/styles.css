@@ -202,6 +202,36 @@
 }
 .baraction:hover { background: none; color: var(--machine); }
 .baraction .icon { width: 16px; height: 16px; flex: none; }
+/* The share menu drops from its button in the black bar, square like everything
+   the site draws, and wears the bar's own black so it reads as part of it. */
+.share { position: relative; }
+.sharemenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-width: 170px;
+  background: #000000;
+  border: 1px solid #333333;
+  padding: 4px 0;
+}
+.sharemenu[hidden] { display: none; }
+.sharemenu button {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 14px;
+  text-align: left;
+  color: #e6e6e6;
+  background: none;
+  border: 0;
+  padding: 9px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sharemenu button:hover,
+.sharemenu button:focus-visible { background: #191919; color: var(--machine); outline: none; }
 .topbar .ident {
   font-family: var(--alt);
   font-size: 11px;

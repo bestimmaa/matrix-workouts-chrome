@@ -15,9 +15,13 @@ import { el } from "./svg.js";
  * Note that Chrome may show its "allow multiple downloads" prompt for the origin.
  * That is the browser asking the user, which is the right place for the question.
  */
-export function downloadJson(filename: string, json: string): void {
-  const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+export function downloadBlob(filename: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
   const link = el("a", { href: url, download: filename });
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+export function downloadJson(filename: string, json: string): void {
+  downloadBlob(filename, new Blob([json], { type: "application/json" }));
 }

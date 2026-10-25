@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   exportFilename,
   flagHeartRateDropouts,
@@ -9,6 +9,17 @@ import {
   type Workout,
 } from "matrix-workouts-core";
 import { renderDashboard } from "./dashboard.js";
+import { shareCardPng, shareCardSvg, shareFilename } from "./share.js";
+
+/*
+ * jsdom has no image decoder and no canvas, so the rasterizer is the one thing the
+ * view tests replace: the menu, the label, the filename and the download around it
+ * are all the real thing.
+ */
+vi.mock("./share.js", async (original) => ({
+  ...(await original<typeof import("./share.js")>()),
+  shareCardPng: vi.fn(),
+}));
 import { clock, hms, km, modeLabel } from "./format.js";
 
 function fixture(id: string): Workout {
@@ -227,7 +238,8 @@ describe("renderDashboard", () => {
     });
 
     function exportControl(root: HTMLElement): HTMLButtonElement {
-      return root.querySelector<HTMLButtonElement>(".topbar .actions button")!;
+      // A direct child: the share menu's button sits inside its own wrapper.
+      return root.querySelector<HTMLButtonElement>(".topbar .actions > button")!;
     }
 
     it("offers the export from the header, and says where the file goes", () => {
@@ -271,5 +283,104 @@ describe("renderDashboard", () => {
     });
     root.querySelector<HTMLButtonElement>("button")!.click();
     expect(asked).toBe(true);
+  });
+
+  describe("share image", () => {
+    const parts = (root: HTMLElement) => {
+      const button = root.querySelector<HTMLButtonElement>(".topbar .share > button")!;
+      const menu = root.querySelector<HTMLElement>(".topbar .sharemenu")!;
+      return { button, menu, items: [...menu.querySelectorAll<HTMLButtonElement>("[role=menuitem]")] };
+    };
+
+    it("sits in the header beside the export, and says nothing is uploaded", () => {
+      const { button, menu, items } = parts(render("6aa045668d2b6d09c612785d"));
+      expect(button.getAttribute("aria-haspopup")).toBe("menu");
+      expect(button.getAttribute("aria-controls")).toBe(menu.id);
+      expect(button.title).toMatch(/nothing is uploaded/);
+      expect(menu.hidden).toBe(true);
+      expect(items.map((i) => i.textContent)).toEqual(["Story, 9:16", "Feed post, 4:5"]);
+    });
+
+    it("opens on click, moves with the arrow keys, and closes on Escape", () => {
+      const root = render("6aa045668d2b6d09c612785d");
+      document.body.append(root);
+      const { button, menu, items } = parts(root);
+      button.click();
+      expect(menu.hidden).toBe(false);
+      expect(button.getAttribute("aria-expanded")).toBe("true");
+      expect(document.activeElement).toBe(items[0]);
+      items[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+      expect(document.activeElement).toBe(items[1]);
+      items[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      expect(menu.hidden).toBe(true);
+      expect(document.activeElement).toBe(button);
+      root.remove();
+    });
+
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it("downloads the PNG under its own name and says so", async () => {
+      const saved: string[] = [];
+      const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+        saved.push(this.download);
+      });
+      const url = window.URL as unknown as Record<string, unknown>;
+      const originals = { create: url["createObjectURL"], revoke: url["revokeObjectURL"] };
+      url["createObjectURL"] = () => "blob:stub";
+      url["revokeObjectURL"] = () => {};
+      vi.mocked(shareCardPng).mockResolvedValueOnce(new Blob(["png"], { type: "image/png" }));
+
+      const root = render("6aa045668d2b6d09c612785d");
+      const { button, items } = parts(root);
+      button.click();
+      items[1]!.click();
+      expect(button.textContent).toBe("Rendering…");
+      await settle();
+      expect(saved).toEqual([shareFilename(fixture("6aa045668d2b6d09c612785d"), "feed")]);
+      expect(button.textContent).toBe("Saved");
+
+      await settle();
+      click.mockRestore();
+      url["createObjectURL"] = originals.create;
+      url["revokeObjectURL"] = originals.revoke;
+    });
+
+    it("fails quietly when the image cannot be drawn, quoting nothing", async () => {
+      vi.mocked(shareCardPng).mockRejectedValueOnce(new Error("the rider's heart rate"));
+      const root = render("6aa045668d2b6d09c612785d");
+      const { button, items } = parts(root);
+      button.click();
+      items[0]!.click();
+      await settle();
+      expect(button.textContent).toBe("Image failed");
+      expect(button.getAttribute("aria-label")).toBe("Image failed");
+    });
+
+    it("renders once however often it is asked while busy", async () => {
+      vi.mocked(shareCardPng).mockClear();
+      vi.mocked(shareCardPng).mockReturnValueOnce(new Promise(() => {}));
+      const { button, items } = parts(render("6aa045668d2b6d09c612785d"));
+      button.click();
+      items[0]!.click();
+      button.click();
+      items[0]!.click();
+      expect(vi.mocked(shareCardPng)).toHaveBeenCalledTimes(1);
+    });
+
+    it("names the PNG beside the JSON export, by format", () => {
+      const w = fixture("6aa045668d2b6d09c612785d");
+      expect(shareFilename(w, "story")).toBe(exportFilename(w).replace(".json", "-story.png"));
+      expect(shareFilename(w, "feed")).toMatch(/-feed\.png$/);
+    });
+
+    it("carries both fonts inside the SVG and names no web address", () => {
+      // Under vitest the font import is a module path; the build inlines it as a
+      // data: URL (see vite.config.ts), which is checked against dist/ in AGENTS.md.
+      const svg = shareCardSvg(fixture("6aa045668d2b6d09c612785d"), "story");
+      expect(svg).toContain("font-family:Doto");
+      expect(svg).toContain('font-family:"Instrument Sans"');
+      expect(svg.match(/src:url\(/g)).toHaveLength(2);
+      expect(svg.replace('xmlns="http://www.w3.org/2000/svg"', "")).not.toMatch(/https?:/);
+    });
   });
 });

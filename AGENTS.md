@@ -137,6 +137,13 @@ writes the whole record — normalized telemetry plus the upstream record verbat
 a file. The document builder is in the core package; this repo only hands the result
 to the browser (`src/ui/download.ts`).
 
+Also built: **Share image**. The header's *Share image* menu saves the ride as a PNG
+to post — a 9:16 story or a 4:5 feed post. Core decides what the card says and lays
+it out as SVG (its `share/`, designed in the 24 Oct 2026 mockups on the
+[project page](https://app.notion.com/p/matrix-workouts-b38b8e99075c4084b554560270fb2381));
+`src/ui/share.ts` only rasterizes it through a detached `<img>` and `<canvas>` and
+hands the PNG to the same download route as the export.
+
 Not built: anything that uses history in aggregate (trends across rides, a power
 curve, sprint-to-sprint comparison). The client returns the whole list; only the one
 requested workout is currently rendered from it. `npx matrix-workouts-history` puts
@@ -250,6 +257,17 @@ Decisions taken up front (revisit deliberately, don't drift):
   anywhere else (the jsdom preview) the stack falls through to the same
   `Rajdhani, "Helvetica Neue", Arial` the app itself declares. Naming a family costs
   no request; fetching one is what the rule forbids.
+
+  **One exception, decided 25 Oct 2026, and it does not touch the view.** The share
+  card is designed in Doto and Instrument Sans, and a canvas draws an SVG through an
+  `<img>`, which cannot reach any font the page has. So both faces (Latin subset,
+  34 KB, SIL OFL — `src/ui/fonts/`) are inlined into `content.js` at build time and
+  embedded as `data:` URLs in the offscreen card SVG, and nowhere else: never in
+  `styles.css`, never registered on the page, never fetched. `vite.config.ts` forces
+  `.woff2` inline, because Vite's 4 KB default emitted Instrument Sans as a file —
+  which a content script would have requested *from the site*. After a build,
+  `dist/` holds exactly `content.js`, `background.js` and `manifest.json`; a font file
+  there is that bug back.
 
 
 ### The layering, and why part of it left
@@ -541,6 +559,12 @@ This handles personal health data.
   no "share" anything. The button's tooltip says so before it is pressed, and a
   failure path must never report an error string that could quote the record it was
   writing — that string is the user's heart rate.
+- **The share image is a local download too — the rider does the sharing.** It is
+  the one thing this view makes that is meant to leave the machine, so it is built
+  to carry less than the export: a date, the program, per-minute shapes and four
+  numbers, never the 10-second series, the account or the machine id. Same
+  download route, same tooltip promise, same silent failure. No share target, no
+  upload, no `navigator.share`.
 
 ---
 
