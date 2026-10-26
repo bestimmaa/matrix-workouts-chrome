@@ -4,11 +4,12 @@ declare module "*.css?inline" {
 }
 
 /**
- * Minimal ambient declaration for the two chrome APIs this extension uses.
+ * Minimal ambient declarations for the chrome APIs this extension uses.
  * Preferred over `@types/chrome`: the surface is tiny and the dependency is not.
  */
 declare namespace chrome.runtime {
   function sendMessage(message: unknown): Promise<unknown>;
+  function openOptionsPage(): Promise<void>;
   const onMessage: {
     addListener(
       listener: (
@@ -28,6 +29,17 @@ declare namespace chrome.action {
 
 declare namespace chrome.tabs {
   function sendMessage(tabId: number, message: unknown): Promise<unknown>;
+}
+
+declare namespace chrome.identity {
+  function launchWebAuthFlow(details: { url: string; interactive: boolean }): Promise<string | undefined>;
+  function getRedirectURL(path?: string): string;
+}
+
+declare namespace chrome.storage.local {
+  function get(key: string): Promise<Record<string, unknown>>;
+  function set(items: Record<string, unknown>): Promise<void>;
+  function remove(key: string): Promise<void>;
 }
 
 /**

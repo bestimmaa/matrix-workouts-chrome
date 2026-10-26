@@ -10,6 +10,7 @@ import {
   niceDomain,
   planWorkout,
   workoutExportJson,
+  workoutTitle,
   type LinearScale,
   type PanelGeometry,
   type Workout,
@@ -23,7 +24,18 @@ import { el, svg } from "./svg.js";
 export interface DashboardOptions {
   /** Hide our sheet and hand the page back to the site. */
   onShowStock: () => void;
+  /** Upload this ride to the rider's Strava. Without it there is no Strava button. */
+  sendToStrava?: () => Promise<StravaOutcome>;
 }
+
+/**
+ * How an upload ended, in the terms the button speaks. `setup` means there is no
+ * Strava app to sign in with yet, `cancelled` that the rider did not connect, and
+ * `processing` that Strava took the file but had not finished with it in time.
+ */
+export type StravaOutcome =
+  | { kind: "uploaded" | "duplicate"; activityId: number }
+  | { kind: "setup" | "cancelled" | "processing" | "failed" };
 
 /** Build the whole replacement view for one workout. */
 export function renderDashboard(workout: Workout, options: DashboardOptions): HTMLElement {
@@ -73,6 +85,7 @@ function topBar(workout: Workout, options: DashboardOptions): HTMLElement {
     stock,
     el("div", { class: "date", text: longDate(workout.startedAt) }),
     el("div", { class: "actions" }, [
+      ...(options.sendToStrava ? [stravaButton(workout, options.sendToStrava)] : []),
       shareMenu(workout),
       exportButton(workout),
       el("div", { class: "ident", text: "Full Matrix Workouts" }),
@@ -192,6 +205,68 @@ function exportButton(workout: Workout): HTMLButtonElement {
       // Deliberately without the error: it can quote what was being written, and
       // that is the user's heart rate. The button says enough.
       action.flash("Export failed", "Export failed");
+    }
+  });
+  return action.button;
+}
+
+/**
+ * Send the ride to the rider's own Strava account, as an indoor ride with a name.
+ *
+ * The one action in this view that uploads, so the tooltip says what goes before it
+ * is pressed: the FIT file, which carries the 10-second series and nothing that
+ * identifies the account or the machine. Once Strava has the ride, the button opens
+ * it there instead of sending it again. A ride Strava already has (the same file sent
+ * twice) counts as sent: Strava names the activity, and that is where the button goes.
+ */
+function stravaButton(workout: Workout, send: () => Promise<StravaOutcome>): HTMLButtonElement {
+  const action = barAction(
+    "upload",
+    ["Send to Strava", "Send this ride to Strava"],
+    `Upload this ride to your Strava account as an indoor ride named "${workoutTitle(workout)}". ` +
+      "Strava receives power, cadence, speed, distance and heart rate every 10 seconds.",
+  );
+  action.button.classList.add("strava");
+  let activityUrl: string | null = null;
+  let sending = false;
+
+  action.button.addEventListener("click", async () => {
+    if (activityUrl) {
+      window.open(activityUrl, "_blank", "noopener");
+      return;
+    }
+    if (sending) return;
+    sending = true;
+    action.say("Sending…", "Sending to Strava");
+    try {
+      const outcome = await send();
+      switch (outcome.kind) {
+        case "uploaded":
+        case "duplicate":
+          activityUrl = `https://www.strava.com/activities/${outcome.activityId}`;
+          action.button.title = "Open this ride on Strava.";
+          action.say(
+            outcome.kind === "uploaded" ? "On Strava" : "Already on Strava",
+            "Open this ride on Strava",
+          );
+          break;
+        case "setup":
+          action.flash("Set up Strava first", "Strava is not set up. The extension's options page has opened.");
+          break;
+        case "cancelled":
+          action.flash("Not connected", "Strava was not connected");
+          break;
+        case "processing":
+          action.flash("Still processing", "Strava is still processing the ride");
+          break;
+        case "failed":
+          action.flash("Upload failed", "Upload failed");
+          break;
+      }
+    } catch {
+      action.flash("Upload failed", "Upload failed");
+    } finally {
+      sending = false;
     }
   });
   return action.button;

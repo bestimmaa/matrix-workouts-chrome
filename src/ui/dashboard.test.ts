@@ -285,6 +285,78 @@ describe("renderDashboard", () => {
     expect(asked).toBe(true);
   });
 
+  describe("send to strava", () => {
+    const stravaControl = (root: HTMLElement) => root.querySelector<HTMLButtonElement>(".topbar .strava");
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it("is offered only where something can make the upload", () => {
+      expect(stravaControl(render("6aa045668d2b6d09c612785d"))).toBeNull();
+      const root = renderDashboard(fixture("6aa045668d2b6d09c612785d"), {
+        onShowStock: () => {},
+        sendToStrava: async () => ({ kind: "failed" }),
+      });
+      const button = stravaControl(root)!;
+      expect(button.textContent).toContain("Send to Strava");
+      // The one action that uploads says so, and says what goes, before it is pressed.
+      expect(button.title).toMatch(/upload/i);
+      expect(button.title).toMatch(/heart rate/);
+      expect(button.title).toContain("Target heart rate · 45 min @ 142 bpm");
+    });
+
+    it("sends once, then opens the ride on Strava instead of sending again", async () => {
+      let sent = 0;
+      const root = renderDashboard(fixture("6aa045668d2b6d09c612785d"), {
+        onShowStock: () => {},
+        sendToStrava: async () => {
+          sent += 1;
+          return { kind: "uploaded", activityId: 42 };
+        },
+      });
+      const opened: unknown[] = [];
+      const open = vi.spyOn(window, "open").mockImplementation((...args) => {
+        opened.push(args[0]);
+        return null;
+      });
+      const button = stravaControl(root)!;
+      button.click();
+      expect(button.textContent).toContain("Sending");
+      await settle();
+      expect(button.textContent).toContain("On Strava");
+
+      button.click();
+      expect(sent).toBe(1);
+      expect(opened).toEqual(["https://www.strava.com/activities/42"]);
+      open.mockRestore();
+    });
+
+    it("treats a ride Strava already has as sent", async () => {
+      const root = renderDashboard(fixture("6aa045668d2b6d09c612785d"), {
+        onShowStock: () => {},
+        sendToStrava: async () => ({ kind: "duplicate", activityId: 7 }),
+      });
+      const button = stravaControl(root)!;
+      button.click();
+      await settle();
+      expect(button.textContent).toContain("Already on Strava");
+    });
+
+    it("says what went wrong in its own words, and stays ready to try again", async () => {
+      let outcome: "cancelled" | "failed" = "cancelled";
+      const root = renderDashboard(fixture("6aa045668d2b6d09c612785d"), {
+        onShowStock: () => {},
+        sendToStrava: async () => ({ kind: outcome }),
+      });
+      const button = stravaControl(root)!;
+      button.click();
+      await settle();
+      expect(button.textContent).toContain("Not connected");
+      outcome = "failed";
+      button.click();
+      await settle();
+      expect(button.textContent).toContain("Upload failed");
+    });
+  });
+
   describe("share image", () => {
     const parts = (root: HTMLElement) => {
       const button = root.querySelector<HTMLButtonElement>(".topbar .share > button")!;

@@ -537,22 +537,25 @@ footer code { font-family: var(--mono); }
 .problem h2 { font-size: 21px; text-transform: uppercase; margin: 0 0 8px; color: var(--ink); }
 .problem p { color: var(--ink-2); font-family: var(--alt); line-height: 1.6; margin: 0 0 14px; }
 
+/* Three labelled actions and the signature need about 600px, more than the right
+   half of a bar under ~1360px wide (measured 26 Oct 2026), and they would land on
+   the centred date. So the signature goes first, and the date stops being centred
+   on the page: the controls take what they need and the date is centred in what is
+   left, ellipsised if it has to be. */
+@media (max-width: 1440px) {
+  .topbar .ident { display: none; }
+  .topbar { gap: 8px; grid-template-columns: auto minmax(0, 1fr) auto; }
+}
+
 @media (max-width: 820px) {
   .console { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; top: 92px; }
   .clock { grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid var(--plot-rule); padding: 0 0 12px; flex-direction: row; align-items: baseline; gap: 10px; }
   .read .v { font-size: 20px; }
   .band { font-size: 17px; min-height: 48px; }
-  /* The ident is a label and can go; the export action is a control and stays —
-     down to its glyph, which is the last thing to give way. Its accessible name is
-     on the button, so hiding the text costs nothing but the width. */
-  .topbar .ident { display: none; }
+  /* The ident went at 1440px; the actions are controls and stay — down to their
+     glyphs, the last thing to give way. Their accessible names are on the
+     buttons, so hiding the text costs nothing but the width. */
   .baraction .label { display: none; }
-  /* The wide bar centres the date on the page, which means the two outer tracks
-     split the leftover space evenly — so the long back label overflows its half and
-     lands on top of the date long before the bar is actually full. Narrow, the
-     controls take the width they need and the date takes what is left, centred in
-     it and ellipsised if it has to be. */
-  .topbar { gap: 8px; grid-template-columns: auto minmax(0, 1fr) auto; }
   /* Two points off the date buys back the width the ellipsis would otherwise eat.
      The date is the only figure this bar carries, and a figure is not something a
      narrow viewport gets to truncate. */

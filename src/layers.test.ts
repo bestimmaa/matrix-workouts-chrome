@@ -19,9 +19,9 @@ import ts from "typescript";
  *   fast enough to run on every change.
  * - **Nothing sprouts a dependency tree.** `mayDependOn` is an allowlist, not a
  *   boolean: a layer may import the one package this extension deliberately depends
- *   on, and nothing else. The bundle is one IIFE that makes no network request of any
- *   kind; that is a promise in README, and it survives exactly as long as the list
- *   below stays short.
+ *   on, and nothing else. The content bundle is one IIFE that makes no network
+ *   request of any kind; that is a promise in README, and it survives exactly as long
+ *   as the list below stays short.
  *
  * **Why the TypeScript AST and not a grep.** Every mention of `localStorage`,
  * `chrome` or `fetch` in a layer that may not use it is inside a comment or a string.
@@ -103,7 +103,7 @@ const LAYERS: Layer[] = [
   },
   {
     name: "extension",
-    dirs: ["content", "background"],
+    dirs: ["content", "background", "options"],
     mayUse: ["dom", "extension", "net"],
     mayImport: ["view", "extension"],
     mayDependOn: [CORE],

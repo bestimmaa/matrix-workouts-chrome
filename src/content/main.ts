@@ -14,6 +14,7 @@ import { el } from "../ui/svg.js";
 import { loadHistory } from "./history.js";
 import { createSurface, type Surface } from "./mount.js";
 import { observeLocation, workoutIdFromPath } from "./route.js";
+import { sendToStrava } from "./strava.js";
 
 /**
  * Content script entry point.
@@ -73,6 +74,10 @@ function shell(title: string, children: (Node | string)[]): HTMLElement {
   ]);
 }
 
+function dashboard(workout: Workout): HTMLElement {
+  return renderDashboard(workout, { onShowStock: showStock, sendToStrava: () => sendToStrava(workout) });
+}
+
 function problem(title: string, message: string, action?: HTMLElement): HTMLElement {
   return shell(title, [
     el("div", { class: "problem" }, [
@@ -117,7 +122,7 @@ function offerHistory(view: Surface, id: string): void {
         const workout = findWorkout(history, id);
         if (workout) {
           if (!isSupportedMachine(workout.machineType)) return outOfScope(view, workout.machineType);
-          view.render(renderDashboard(workout, { onShowStock: showStock }));
+          view.render(dashboard(workout));
           renderedId = id;
           return;
         }
@@ -163,7 +168,7 @@ function renderWorkout(view: Surface, id: string): void {
     if (workout && !isSupportedMachine(workout.machineType)) {
       outOfScope(view, workout.machineType);
     } else if (workout) {
-      view.render(renderDashboard(workout, { onShowStock: showStock }));
+      view.render(dashboard(workout));
       renderedId = id;
     } else {
       offerHistory(view, id);

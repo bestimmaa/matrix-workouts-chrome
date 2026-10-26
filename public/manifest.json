@@ -3,8 +3,16 @@
   "name": "Full Matrix Workouts",
   "version": "0.3.0",
   "description": "Replaces the Matrix workout dashboard with the full recorded telemetry: power, resistance and cadence.",
-  "permissions": ["activeTab"],
-  "host_permissions": ["https://apollo.jfit.co/*"],
+  "permissions": ["activeTab", "identity", "storage"],
+  "host_permissions": [
+    "https://apollo.jfit.co/*",
+    "https://www.strava.com/api/v3/uploads*",
+    "https://www.strava.com/oauth/*"
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
   "action": {
     "default_title": "Full Matrix Workouts — show the full telemetry"
   },

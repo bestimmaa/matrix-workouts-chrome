@@ -33,7 +33,9 @@ mkdirSync(resolve(process.cwd(), "preview"), { recursive: true });
 for (const id of ids) {
   const raw = JSON.parse(readFileSync(resolve(process.cwd(), `fixtures/raw-${id}.json`), "utf8"));
   const workout = toWorkout(raw as Record<string, unknown>);
-  const view = renderDashboard(workout, { onShowStock: () => {} });
+  // The header as the extension mounts it, Strava button included. Nothing here can
+  // upload, and the button is inert in a static file anyway.
+  const view = renderDashboard(workout, { onShowStock: () => {}, sendToStrava: async () => ({ kind: "failed" }) });
 
   // `:host` only resolves inside a shadow root; the preview is a plain document.
   // The three theme guards must keep their structure, or the preview cannot show
