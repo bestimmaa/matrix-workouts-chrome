@@ -1,13 +1,24 @@
-import { APP_KEY, TOKENS_KEY, type StravaApp, type StravaTokens } from "../background/strava.js";
+import styles from "../ui/styles.css?inline";
+import { documentStyles } from "../ui/documentStyles.js";
+import { APP_KEY, TOKENS_KEY, type SaveAppMessage, type StravaApp, type StravaTokens } from "../background/strava.js";
 
 /**
  * The options page: where the rider's own Strava app is entered, and where everything
- * the Strava upload keeps in `chrome.storage` can be seen and cleared.
+ * the Strava upload keeps in `chrome.storage` can be seen and cleared. Writes go
+ * through the service worker, which owns that storage; this page only reads it to
+ * show the status.
  *
  * It shows the callback domain to register, because that is the one value the rider
  * cannot look up anywhere else: it is this extension's id, which Chrome derives from
  * the folder it was loaded from.
+ *
+ * It wears the view's own tokens, read from the same stylesheet, so the two cannot
+ * drift apart.
  */
+
+const tokens = document.createElement("style");
+tokens.textContent = documentStyles(styles);
+document.head.prepend(tokens);
 
 const byId = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -20,12 +31,12 @@ const status = byId<HTMLElement>("status");
 byId<HTMLElement>("callback").textContent = new URL(chrome.identity.getRedirectURL()).host;
 
 async function show(): Promise<void> {
-  const stored = await chrome.storage.local.get(APP_KEY);
+  const stored = await chrome.storage.local.get([APP_KEY, TOKENS_KEY]);
   const app = stored[APP_KEY] as StravaApp | undefined;
+  const connected = stored[TOKENS_KEY] as StravaTokens | undefined;
   clientId.value = app?.clientId ?? "";
   clientSecret.value = app?.clientSecret ?? "";
-  const tokens = (await chrome.storage.local.get(TOKENS_KEY))[TOKENS_KEY] as StravaTokens | undefined;
-  status.textContent = tokens
+  status.textContent = connected
     ? "Connected. Uploads go straight to your account."
     : app
       ? "Not connected yet. The first upload asks you to connect."
@@ -35,10 +46,12 @@ async function show(): Promise<void> {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const app: StravaApp = { clientId: clientId.value.trim(), clientSecret: clientSecret.value.trim() };
-  const before = (await chrome.storage.local.get(APP_KEY))[APP_KEY] as StravaApp | undefined;
-  await chrome.storage.local.set({ [APP_KEY]: app });
-  // Tokens belong to the app that issued them; a different app starts over.
-  if (before?.clientId !== app.clientId) await chrome.storage.local.remove(TOKENS_KEY);
+  if (!app.clientId || !app.clientSecret) {
+    saved.textContent = " Both fields are needed.";
+    return;
+  }
+  const message: SaveAppMessage = { type: "stravaSaveApp", app };
+  await chrome.runtime.sendMessage(message);
   saved.textContent = " Saved.";
   await show();
 });

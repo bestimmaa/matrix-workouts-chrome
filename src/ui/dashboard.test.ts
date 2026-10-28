@@ -8,7 +8,7 @@ import {
   toWorkout,
   type Workout,
 } from "matrix-workouts-core";
-import { renderDashboard } from "./dashboard.js";
+import { renderDashboard, type StravaOutcome } from "./dashboard.js";
 import { shareCardPng, shareCardSvg, shareFilename } from "./share.js";
 
 /*
@@ -286,16 +286,16 @@ describe("renderDashboard", () => {
   });
 
   describe("send to strava", () => {
+    const RIDE = "6aa045668d2b6d09c612785d";
+    const ACTIVITY = "https://www.strava.com/activities/42";
+    const withStrava = (send: () => Promise<StravaOutcome>) =>
+      renderDashboard(fixture(RIDE), { onShowStock: () => {}, sendToStrava: send });
     const stravaControl = (root: HTMLElement) => root.querySelector<HTMLButtonElement>(".topbar .strava");
     const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
     it("is offered only where something can make the upload", () => {
-      expect(stravaControl(render("6aa045668d2b6d09c612785d"))).toBeNull();
-      const root = renderDashboard(fixture("6aa045668d2b6d09c612785d"), {
-        onShowStock: () => {},
-        sendToStrava: async () => ({ kind: "failed" }),
-      });
-      const button = stravaControl(root)!;
+      expect(stravaControl(render(RIDE))).toBeNull();
+      const button = stravaControl(withStrava(async () => ({ kind: "failed" })))!;
       expect(button.textContent).toContain("Send to Strava");
       // The one action that uploads says so, and says what goes, before it is pressed.
       expect(button.title).toMatch(/upload/i);
@@ -304,37 +304,22 @@ describe("renderDashboard", () => {
     });
 
     it("sends once, then opens the ride on Strava instead of sending again", async () => {
-      let sent = 0;
-      const root = renderDashboard(fixture("6aa045668d2b6d09c612785d"), {
-        onShowStock: () => {},
-        sendToStrava: async () => {
-          sent += 1;
-          return { kind: "uploaded", activityId: 42 };
-        },
-      });
-      const opened: unknown[] = [];
-      const open = vi.spyOn(window, "open").mockImplementation((...args) => {
-        opened.push(args[0]);
-        return null;
-      });
-      const button = stravaControl(root)!;
+      const send = vi.fn(async (): Promise<StravaOutcome> => ({ kind: "uploaded", activityUrl: ACTIVITY }));
+      const open = vi.spyOn(window, "open").mockImplementation(() => null);
+      const button = stravaControl(withStrava(send))!;
       button.click();
       expect(button.textContent).toContain("Sending");
       await settle();
       expect(button.textContent).toContain("On Strava");
 
       button.click();
-      expect(sent).toBe(1);
-      expect(opened).toEqual(["https://www.strava.com/activities/42"]);
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(open).toHaveBeenCalledWith(ACTIVITY, "_blank", "noopener");
       open.mockRestore();
     });
 
     it("treats a ride Strava already has as sent", async () => {
-      const root = renderDashboard(fixture("6aa045668d2b6d09c612785d"), {
-        onShowStock: () => {},
-        sendToStrava: async () => ({ kind: "duplicate", activityId: 7 }),
-      });
-      const button = stravaControl(root)!;
+      const button = stravaControl(withStrava(async () => ({ kind: "duplicate", activityUrl: ACTIVITY })))!;
       button.click();
       await settle();
       expect(button.textContent).toContain("Already on Strava");
@@ -342,11 +327,7 @@ describe("renderDashboard", () => {
 
     it("says what went wrong in its own words, and stays ready to try again", async () => {
       let outcome: "cancelled" | "failed" = "cancelled";
-      const root = renderDashboard(fixture("6aa045668d2b6d09c612785d"), {
-        onShowStock: () => {},
-        sendToStrava: async () => ({ kind: outcome }),
-      });
-      const button = stravaControl(root)!;
+      const button = stravaControl(withStrava(async () => ({ kind: outcome })))!;
       button.click();
       await settle();
       expect(button.textContent).toContain("Not connected");

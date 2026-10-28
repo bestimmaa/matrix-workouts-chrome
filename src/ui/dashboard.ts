@@ -31,11 +31,20 @@ export interface DashboardOptions {
 /**
  * How an upload ended, in the terms the button speaks. `setup` means there is no
  * Strava app to sign in with yet, `cancelled` that the rider did not connect, and
- * `processing` that Strava took the file but had not finished with it in time.
+ * `processing` that Strava took the file but had not finished with it in time. The
+ * ride's address comes with it, so the view knows nothing about Strava's URLs.
  */
 export type StravaOutcome =
-  | { kind: "uploaded" | "duplicate"; activityId: number }
+  | { kind: "uploaded" | "duplicate"; activityUrl: string }
   | { kind: "setup" | "cancelled" | "processing" | "failed" };
+
+/** What the button says, visibly and aloud, when an upload did not end on Strava. */
+const STRAVA_TROUBLE: Record<"setup" | "cancelled" | "processing" | "failed", readonly [string, string]> = {
+  setup: ["Set up Strava first", "Strava is not set up. The extension's options page has opened."],
+  cancelled: ["Not connected", "Strava was not connected"],
+  processing: ["Still processing", "Strava is still processing the ride"],
+  failed: ["Upload failed", "Upload failed"],
+};
 
 /** Build the whole replacement view for one workout. */
 export function renderDashboard(workout: Workout, options: DashboardOptions): HTMLElement {
@@ -240,31 +249,15 @@ function stravaButton(workout: Workout, send: () => Promise<StravaOutcome>): HTM
     action.say("Sending…", "Sending to Strava");
     try {
       const outcome = await send();
-      switch (outcome.kind) {
-        case "uploaded":
-        case "duplicate":
-          activityUrl = `https://www.strava.com/activities/${outcome.activityId}`;
-          action.button.title = "Open this ride on Strava.";
-          action.say(
-            outcome.kind === "uploaded" ? "On Strava" : "Already on Strava",
-            "Open this ride on Strava",
-          );
-          break;
-        case "setup":
-          action.flash("Set up Strava first", "Strava is not set up. The extension's options page has opened.");
-          break;
-        case "cancelled":
-          action.flash("Not connected", "Strava was not connected");
-          break;
-        case "processing":
-          action.flash("Still processing", "Strava is still processing the ride");
-          break;
-        case "failed":
-          action.flash("Upload failed", "Upload failed");
-          break;
+      if (outcome.kind === "uploaded" || outcome.kind === "duplicate") {
+        activityUrl = outcome.activityUrl;
+        action.button.title = "Open this ride on Strava.";
+        action.say(outcome.kind === "uploaded" ? "On Strava" : "Already on Strava", "Open this ride on Strava");
+      } else {
+        action.flash(...STRAVA_TROUBLE[outcome.kind]);
       }
     } catch {
-      action.flash("Upload failed", "Upload failed");
+      action.flash(...STRAVA_TROUBLE.failed);
     } finally {
       sending = false;
     }

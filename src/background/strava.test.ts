@@ -6,6 +6,7 @@ import {
   codeFromRedirect,
   disconnect,
   duplicateOf,
+  saveApp,
   uploadRide,
   type StravaDeps,
   type StravaTokens,
@@ -41,6 +42,7 @@ function harness(
   const store = new Map<string, unknown>(Object.entries(options.stored ?? {}));
   const calls: Call[] = [];
   const authorized: string[] = [];
+  const setup = { opened: 0 };
   const replies = options.replies ?? {};
   const deps: StravaDeps = {
     fetch: async (url, init) => {
@@ -57,16 +59,22 @@ function harness(
       return options.authorize ? options.authorize(url) : `${REDIRECT}?state=&code=CODE&scope=read,activity:write`;
     },
     redirectUri: REDIRECT,
+    openSetup: async () => void (setup.opened += 1),
     now: () => NOW_MS,
     sleep: async () => {},
   };
-  return { deps, store, calls, authorized };
+  return { deps, store, calls, authorized, setup };
 }
 
 const APP = { clientId: "12345", clientSecret: "s3cret" };
 const FRESH: StravaTokens = { accessToken: "AT", refreshToken: "RT", expiresAt: NOW_S + 3600 };
 const UPLOADS = "https://www.strava.com/api/v3/uploads";
 const TOKEN = "https://www.strava.com/oauth/token";
+const DEAUTHORIZE = "https://www.strava.com/oauth/deauthorize";
+const CONNECTED = { [APP_KEY]: APP, [TOKENS_KEY]: FRESH };
+/** An upload Strava finished at once, as activity 5. */
+const DONE: Reply = { status: 201, body: { id: 1, activity_id: 5, error: null } };
+const activity = (id: number) => `https://www.strava.com/activities/${id}`;
 const tokenReply = (access: string): Reply => ({
   status: 200,
   // The real response carries the athlete's profile too; it must not be kept.
@@ -98,16 +106,17 @@ describe("duplicateOf", () => {
 });
 
 describe("uploadRide", () => {
-  it("asks for setup when there is no app, and makes no request", async () => {
-    const { deps, calls, authorized } = harness();
+  it("asks for setup when there is no app, opens the options page, and makes no request", async () => {
+    const { deps, calls, authorized, setup } = harness();
     expect(await uploadRide(deps, MESSAGE)).toEqual({ kind: "setup" });
+    expect(setup.opened).toBe(1);
     expect(calls).toEqual([]);
     expect(authorized).toEqual([]);
   });
 
   it("uploads with a stored token, marked indoor, and waits for the activity", async () => {
     const { deps, calls } = harness({
-      stored: { [APP_KEY]: APP, [TOKENS_KEY]: FRESH },
+      stored: CONNECTED,
       replies: {
         [UPLOADS]: [{ status: 201, body: { id: 77, activity_id: null, error: null } }],
         [`${UPLOADS}/77`]: [
@@ -116,7 +125,7 @@ describe("uploadRide", () => {
         ],
       },
     });
-    expect(await uploadRide(deps, MESSAGE)).toEqual({ kind: "uploaded", activityId: 999 });
+    expect(await uploadRide(deps, MESSAGE)).toEqual({ kind: "uploaded", activityUrl: activity(999) });
 
     const post = calls[0]!;
     expect(post.init.method).toBe("POST");
@@ -136,10 +145,10 @@ describe("uploadRide", () => {
       stored: { [APP_KEY]: APP },
       replies: {
         [TOKEN]: [tokenReply("NEW")],
-        [UPLOADS]: [{ status: 201, body: { id: 1, activity_id: 5, error: null } }],
+        [UPLOADS]: [DONE],
       },
     });
-    expect(await uploadRide(deps, MESSAGE)).toEqual({ kind: "uploaded", activityId: 5 });
+    expect(await uploadRide(deps, MESSAGE)).toEqual({ kind: "uploaded", activityUrl: activity(5) });
     expect(authorized).toHaveLength(1);
     const exchange = new URLSearchParams(calls[0]!.init.body as URLSearchParams);
     expect(exchange.get("grant_type")).toBe("authorization_code");
@@ -153,7 +162,7 @@ describe("uploadRide", () => {
       stored: { [APP_KEY]: APP, [TOKENS_KEY]: { ...FRESH, expiresAt: NOW_S + 60 } },
       replies: {
         [TOKEN]: [tokenReply("REFRESHED")],
-        [UPLOADS]: [{ status: 201, body: { id: 1, activity_id: 5, error: null } }],
+        [UPLOADS]: [DONE],
       },
     });
     await uploadRide(deps, MESSAGE);
@@ -164,13 +173,13 @@ describe("uploadRide", () => {
 
   it("signs in again, once, when Strava revoked the token", async () => {
     const { deps, authorized } = harness({
-      stored: { [APP_KEY]: APP, [TOKENS_KEY]: FRESH },
+      stored: CONNECTED,
       replies: {
         [TOKEN]: [tokenReply("AGAIN")],
-        [UPLOADS]: [{ status: 401 }, { status: 201, body: { id: 1, activity_id: 5, error: null } }],
+        [UPLOADS]: [{ status: 401 }, DONE],
       },
     });
-    expect(await uploadRide(deps, MESSAGE)).toEqual({ kind: "uploaded", activityId: 5 });
+    expect(await uploadRide(deps, MESSAGE)).toEqual({ kind: "uploaded", activityUrl: activity(5) });
     expect(authorized).toHaveLength(1);
   });
 
@@ -193,7 +202,7 @@ describe("uploadRide", () => {
 
   it("turns a duplicate into a link to the ride Strava already has", async () => {
     const { deps } = harness({
-      stored: { [APP_KEY]: APP, [TOKENS_KEY]: FRESH },
+      stored: CONNECTED,
       replies: {
         [UPLOADS]: [{ status: 201, body: { id: 3, activity_id: null, error: null } }],
         [`${UPLOADS}/3`]: [
@@ -201,30 +210,63 @@ describe("uploadRide", () => {
         ],
       },
     });
-    expect(await uploadRide(deps, MESSAGE)).toEqual({ kind: "duplicate", activityId: 20735485020 });
+    expect(await uploadRide(deps, MESSAGE)).toEqual({ kind: "duplicate", activityUrl: activity(20735485020) });
   });
 
   it("says processing when Strava has not finished in time, and failed on any other error", async () => {
     const pending = { status: 200, body: { id: 4, activity_id: null, error: null } };
     const slow = harness({
-      stored: { [APP_KEY]: APP, [TOKENS_KEY]: FRESH },
+      stored: CONNECTED,
       replies: { [UPLOADS]: [{ status: 201, body: pending.body }], [`${UPLOADS}/4`]: Array(30).fill(pending) },
     });
     expect(await uploadRide(slow.deps, MESSAGE)).toEqual({ kind: "processing" });
 
     const broken = harness({
-      stored: { [APP_KEY]: APP, [TOKENS_KEY]: FRESH },
+      stored: CONNECTED,
       replies: { [UPLOADS]: [{ status: 201, body: { id: 5, activity_id: null, error: "Improperly formatted data." } }] },
     });
     expect(await uploadRide(broken.deps, MESSAGE)).toEqual({ kind: "failed" });
   });
 });
 
+describe("uploadRide when storage fails", () => {
+  /* The page awaits an answer; a rejection here would leave the button on "Sending…". */
+  it("answers failed rather than rejecting", async () => {
+    const { deps } = harness();
+    deps.load = async () => {
+      throw new Error("storage unavailable");
+    };
+    expect(await uploadRide(deps, MESSAGE)).toEqual({ kind: "failed" });
+  });
+});
+
+describe("saveApp", () => {
+  it("keeps the tokens for the same app and drops them for a different one", async () => {
+    const { deps, store } = harness({ stored: CONNECTED });
+    await saveApp(deps, { ...APP, clientSecret: "rotated" });
+    expect(store.get(TOKENS_KEY)).toEqual(FRESH);
+    await saveApp(deps, { clientId: "99999", clientSecret: "other" });
+    expect(store.has(TOKENS_KEY)).toBe(false);
+    expect(store.get(APP_KEY)).toEqual({ clientId: "99999", clientSecret: "other" });
+  });
+});
+
 describe("disconnect", () => {
+  it("refreshes an expired token so the revoke can work", async () => {
+    const { deps, store, calls } = harness({
+      stored: { [APP_KEY]: APP, [TOKENS_KEY]: { ...FRESH, expiresAt: NOW_S - 60 } },
+      replies: { [TOKEN]: [tokenReply("LIVE")], DEAUTHORIZE: [{ status: 200 }] },
+    });
+    await disconnect(deps);
+    expect(calls.map((c) => c.url)).toEqual([TOKEN, DEAUTHORIZE]);
+    expect(new URLSearchParams(calls[1]!.init.body as URLSearchParams).get("access_token")).toBe("LIVE");
+    expect(store.size).toBe(0);
+  });
+
   it("revokes the token and forgets the app, even offline", async () => {
-    const { deps, store, calls } = harness({ stored: { [APP_KEY]: APP, [TOKENS_KEY]: FRESH } });
+    const { deps, store, calls } = harness({ stored: CONNECTED });
     await disconnect(deps); // no reply queued: the deauthorize request throws
-    expect(calls.map((c) => c.url)).toEqual(["https://www.strava.com/oauth/deauthorize"]);
+    expect(calls.map((c) => c.url)).toEqual([DEAUTHORIZE]);
     expect(store.size).toBe(0);
   });
 });

@@ -18,6 +18,7 @@ g.document = dom.window.document;
 g.window = dom.window;
 
 const { toWorkout } = await import("matrix-workouts-core");
+const { documentStyles } = await import("../src/ui/documentStyles.js");
 const { renderDashboard } = await import("../src/ui/dashboard.js");
 
 const styles = readFileSync(resolve(process.cwd(), "src/ui/styles.css"), "utf8");
@@ -37,13 +38,7 @@ for (const id of ids) {
   // upload, and the button is inert in a static file anyway.
   const view = renderDashboard(workout, { onShowStock: () => {}, sendToStrava: async () => ({ kind: "failed" }) });
 
-  // `:host` only resolves inside a shadow root; the preview is a plain document.
-  // The three theme guards must keep their structure, or the preview cannot show
-  // the light theme at all on a dark-mode machine.
-  const pageStyles = styles
-    .replace(/:host\(:not\(\[data-theme="light"\]\)\)/g, ':root:not([data-theme="light"])')
-    .replace(/:host\(\[data-theme="dark"\]\)/g, ':root[data-theme="dark"]')
-    .replace(/:host/g, ":root");
+  const pageStyles = documentStyles(styles);
 
   const html = `<!doctype html>
 <html lang="en" data-theme="${process.env["THEME"] ?? ""}">

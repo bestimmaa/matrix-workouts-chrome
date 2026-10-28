@@ -1,18 +1,29 @@
 import { API_ORIGIN } from "matrix-workouts-core";
-import { disconnect, uploadRide, type StravaDeps, type UploadMessage } from "./strava.js";
+import {
+  disconnect,
+  isSaveAppMessage,
+  isUploadMessage,
+  saveApp,
+  uploadRide,
+  type StravaDeps,
+} from "./strava.js";
 
 /**
- * Service worker. It makes the cross-origin requests the content script cannot: the
- * one read from the workout API, and the Strava upload the rider asks for.
+ * Service worker. It makes the cross-origin requests the content script cannot, and
+ * it owns the one thing the extension keeps.
  *
  * Content-script `fetch` is subject to CORS as the *page's* origin, regardless of
  * `host_permissions` — so a call from `matrixworkouts.jfit.co` to `apollo.jfit.co`
  * is at the mercy of headers we do not control. A request from the service worker
  * runs with the extension's host permissions instead and is not.
  *
- * This worker is deliberately dumb: it forwards one request to one allowed origin
- * and returns the body. It does not parse, cache, store, or log anything — the
- * Authorization header passes through in memory and is gone when the response is.
+ * Two jobs, kept apart:
+ *
+ * - **The workout API: a dumb forwarder.** One GET to one allowed origin, the body
+ *   returned. Nothing parsed, cached, stored or logged — the jfit Authorization
+ *   header passes through in memory and is gone when the response is.
+ * - **Strava: the client itself** (`strava.ts`). Sign-in, upload and polling run
+ *   here so the tokens, the one thing stored, never reach a page.
  */
 
 interface ApiFetchMessage {
@@ -29,13 +40,11 @@ interface ApiFetchReply {
   error?: string;
 }
 
+const messageType = (message: unknown): unknown =>
+  typeof message === "object" && message !== null ? (message as { type?: unknown }).type : undefined;
+
 function isApiFetch(message: unknown): message is ApiFetchMessage {
-  return (
-    typeof message === "object" &&
-    message !== null &&
-    (message as ApiFetchMessage).type === "apiFetch" &&
-    typeof (message as ApiFetchMessage).url === "string"
-  );
+  return messageType(message) === "apiFetch" && typeof (message as ApiFetchMessage).url === "string";
 }
 
 async function forward(message: ApiFetchMessage): Promise<ApiFetchReply> {
@@ -67,11 +76,7 @@ async function forward(message: ApiFetchMessage): Promise<ApiFetchReply> {
   }
 }
 
-/**
- * Strava. The tokens live here and in `chrome.storage.local`, and never reach the
- * content script: it sends the file and gets back how the upload ended. See
- * `strava.ts` for the flow.
- */
+/** What the Strava client stands on. */
 const strava: StravaDeps = {
   fetch: (url, init) => fetch(url, init),
   load: async <T>(key: string) => (await chrome.storage.local.get(key))[key] as T | undefined,
@@ -83,31 +88,22 @@ const strava: StravaDeps = {
     return redirect;
   },
   redirectUri: chrome.identity.getRedirectURL(),
+  openSetup: () => chrome.runtime.openOptionsPage(),
   now: () => Date.now(),
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
 
-const typeOf = (message: unknown): unknown =>
-  typeof message === "object" && message !== null ? (message as { type?: unknown }).type : undefined;
-
+/**
+ * One message, one guarded handler, one answer. Each returns `true` to keep the
+ * channel open for its async reply, and always replies: the sender is awaiting it.
+ */
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (isApiFetch(message)) {
-    forward(message).then(sendResponse);
-    return true; // keep the channel open for the async reply
-  }
-  switch (typeOf(message)) {
-    case "stravaUpload":
-      uploadRide(strava, message as UploadMessage).then(sendResponse);
-      return true;
-    case "stravaDisconnect":
-      disconnect(strava).then(() => sendResponse(null));
-      return true;
-    case "openOptions":
-      chrome.runtime.openOptionsPage().then(() => sendResponse(null));
-      return true;
-    default:
-      return false;
-  }
+  if (isApiFetch(message)) forward(message).then(sendResponse);
+  else if (isUploadMessage(message)) uploadRide(strava, message).then(sendResponse);
+  else if (isSaveAppMessage(message)) saveApp(strava, message.app).finally(() => sendResponse(null));
+  else if (messageType(message) === "stravaDisconnect") disconnect(strava).finally(() => sendResponse(null));
+  else return false;
+  return true;
 });
 
 /**

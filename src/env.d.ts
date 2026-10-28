@@ -37,7 +37,7 @@ declare namespace chrome.identity {
 }
 
 declare namespace chrome.storage.local {
-  function get(key: string): Promise<Record<string, unknown>>;
+  function get(keys: string | string[]): Promise<Record<string, unknown>>;
   function set(items: Record<string, unknown>): Promise<void>;
   function remove(key: string): Promise<void>;
 }
