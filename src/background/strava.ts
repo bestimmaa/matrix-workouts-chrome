@@ -21,8 +21,13 @@ const STRAVA_ORIGIN = "https://www.strava.com";
 const UPLOADS = `${STRAVA_ORIGIN}/api/v3/uploads`;
 const TOKEN = `${STRAVA_ORIGIN}/oauth/token`;
 const DEAUTHORIZE = `${STRAVA_ORIGIN}/oauth/deauthorize`;
-/** Upload and read back the upload's status. Nothing else is asked for. */
-const SCOPE = "activity:write";
+const ACTIVITIES = `${STRAVA_ORIGIN}/api/v3/activities`;
+/**
+ * Upload, and read back one activity: the one a "duplicate" names, to tell our own
+ * earlier upload from another app's copy. `read_all`, because a rider whose default
+ * is "Only You" has nothing `activity:read` can see.
+ */
+const SCOPES = ["activity:write", "activity:read_all"];
 
 /** Storage keys, exported for the tests. */
 export const APP_KEY = "stravaApp";
@@ -85,21 +90,21 @@ export function authorizeUrl(clientId: string, redirectUri: string): string {
     redirect_uri: redirectUri,
     response_type: "code",
     approval_prompt: "auto",
-    scope: SCOPE,
+    scope: SCOPES.join(","),
   });
   return `${STRAVA_ORIGIN}/oauth/authorize?${query}`;
 }
 
 /**
- * The code from Strava's redirect, or null when the rider declined. Unticking the
- * upload box on the consent page still redirects with a code, just without the
- * scope, so the scope is checked too.
+ * The code from Strava's redirect, or null when the rider declined. Unticking a box
+ * on the consent page still redirects with a code, just without that scope, so the
+ * scopes are checked too.
  */
 export function codeFromRedirect(redirect: string): string | null {
   const params = new URL(redirect).searchParams;
   const code = params.get("code");
   const granted = (params.get("scope") ?? "").split(",");
-  return code && !params.has("error") && granted.includes(SCOPE) ? code : null;
+  return code && !params.has("error") && SCOPES.every((scope) => granted.includes(scope)) ? code : null;
 }
 
 /**
@@ -178,13 +183,47 @@ function fromBase64(text: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-/** A finished upload, a duplicate, or a failure, read off one status response. Null while processing. */
-function settled(status: UploadStatus): StravaOutcome | null {
+/**
+ * What one status response says: a finished upload, a failure, the activity a
+ * "duplicate" collided with (whose it is still to be found out), or null while
+ * Strava is processing.
+ */
+function settled(status: UploadStatus): StravaOutcome | { collidedWith: number } | null {
   if (status.error) {
     const existing = duplicateOf(status.error);
-    return existing ? { kind: "duplicate", activityUrl: activityUrl(existing) } : { kind: "failed" };
+    return existing ? { collidedWith: existing } : { kind: "failed" };
   }
   return status.activity_id ? { kind: "uploaded", activityUrl: activityUrl(status.activity_id) } : null;
+}
+
+/**
+ * Whose activity a duplicate collided with. Strava reports a duplicate both for our
+ * own file sent twice and, sometimes, for another app's copy of the same ride: on
+ * 28 Oct 2026, 6 of 46 uploads were refused as duplicates of the Apple Watch ride.
+ * Only the first is "already on Strava". The activity's `external_id` tells them
+ * apart: ours begins with the one this upload sent ("matrix-workout-…Z.fit"), the
+ * watch's is "stripped_<uuid>.fit".
+ *
+ * A 401 here is a token from before read access was asked for, so the rider is
+ * asked to connect again, once, as for a revoked token.
+ */
+async function collision(
+  deps: StravaDeps,
+  app: StravaApp,
+  tokens: StravaTokens,
+  id: number,
+  message: UploadMessage,
+): Promise<StravaOutcome> {
+  let response = await deps.fetch(`${ACTIVITIES}/${id}`, { headers: bearer(tokens) });
+  if (response.status === 401) {
+    const fresh = await signIn(deps, app);
+    if (!fresh) return { kind: "cancelled" };
+    response = await deps.fetch(`${ACTIVITIES}/${id}`, { headers: bearer(fresh) });
+  }
+  if (!response.ok) return { kind: "failed" };
+  const { external_id } = (await response.json()) as { external_id?: unknown };
+  const ours = typeof external_id === "string" && external_id.startsWith(message.fields.external_id);
+  return { kind: ours ? "duplicate" : "conflict", activityUrl: activityUrl(id) };
 }
 
 const bearer = (tokens: StravaTokens) => ({ Authorization: `Bearer ${tokens.accessToken}` });
@@ -233,16 +272,18 @@ async function upload(deps: StravaDeps, app: StravaApp, message: UploadMessage):
   if (!response.ok) return { kind: "failed" };
 
   let status = (await response.json()) as UploadStatus;
-  for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; attempt <= POLL_ATTEMPTS; attempt += 1) {
     const outcome = settled(status);
+    if (outcome && "collidedWith" in outcome) return collision(deps, app, tokens, outcome.collidedWith, message);
     if (outcome) return outcome;
+    if (attempt === POLL_ATTEMPTS) break;
     if (typeof status.id !== "number") return { kind: "failed" };
     await deps.sleep(POLL_INTERVAL_MS);
     const poll = await deps.fetch(`${UPLOADS}/${status.id}`, { headers: bearer(tokens) });
     if (!poll.ok) return { kind: "failed" };
     status = (await poll.json()) as UploadStatus;
   }
-  return settled(status) ?? { kind: "processing" };
+  return { kind: "processing" };
 }
 
 /** For the options page: whether Strava is connected, and if not, whether there is an app to connect with. */

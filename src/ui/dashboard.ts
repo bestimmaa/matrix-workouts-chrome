@@ -31,11 +31,13 @@ export interface DashboardOptions {
 /**
  * How an upload ended, in the terms the button speaks. `setup` means there is no
  * Strava app to sign in with yet, `cancelled` that the rider did not connect, and
- * `processing` that Strava took the file but had not finished with it in time. The
- * ride's address comes with it, so the view knows nothing about Strava's URLs.
+ * `processing` that Strava took the file but had not finished with it in time.
+ * `duplicate` is this ride, already uploaded; `conflict` is another app's copy of it
+ * (an Apple Watch ride, say) that Strava refused this one for. Either way the
+ * activity's address comes with it, so the view knows nothing about Strava's URLs.
  */
 export type StravaOutcome =
-  | { kind: "uploaded" | "duplicate"; activityUrl: string }
+  | { kind: "uploaded" | "duplicate" | "conflict"; activityUrl: string }
   | { kind: "setup" | "cancelled" | "processing" | "failed" };
 
 /** What the button says, visibly and aloud, when an upload did not end on Strava. */
@@ -227,20 +229,30 @@ function exportButton(workout: Workout): HTMLButtonElement {
  * identifies the account or the machine. Once Strava has the ride, the button opens
  * it there instead of sending it again. A ride Strava already has (the same file sent
  * twice) counts as sent: Strava names the activity, and that is where the button goes.
+ *
+ * A conflict is different: Strava refused the ride because another app's copy is
+ * there. The button says so and its next click opens that copy, so the rider can
+ * delete it. The click after that sends again.
  */
 function stravaButton(workout: Workout, send: () => Promise<StravaOutcome>): HTMLButtonElement {
-  const action = barAction(
-    "upload",
-    ["Send to Strava", "Send this ride to Strava"],
+  const idleTitle =
     `Upload this ride to your Strava account as an indoor ride named "${workoutTitle(workout)}". ` +
-      "Strava receives power, cadence, speed, distance and heart rate every 10 seconds.",
-  );
+    "Strava receives power, cadence, speed, distance and heart rate every 10 seconds.";
+  const action = barAction("upload", ["Send to Strava", "Send this ride to Strava"], idleTitle);
   action.button.classList.add("strava");
   let activityUrl: string | null = null;
+  let conflictUrl: string | null = null;
 
   action.button.addEventListener("click", () => {
     if (activityUrl) {
       window.open(activityUrl, "_blank", "noopener");
+      return;
+    }
+    if (conflictUrl) {
+      window.open(conflictUrl, "_blank", "noopener");
+      conflictUrl = null;
+      action.button.title = idleTitle;
+      action.say("Send to Strava", "Send this ride to Strava");
       return;
     }
     void action.run(["Sending…", "Sending to Strava"], async () => {
@@ -250,6 +262,12 @@ function stravaButton(workout: Workout, send: () => Promise<StravaOutcome>): HTM
           activityUrl = outcome.activityUrl;
           action.button.title = "Open this ride on Strava.";
           action.say(outcome.kind === "uploaded" ? "On Strava" : "Already on Strava", "Open this ride on Strava");
+        } else if (outcome.kind === "conflict") {
+          conflictUrl = outcome.activityUrl;
+          action.button.title =
+            "Strava already has another copy of this ride, from another app or device, and refused this one. " +
+            "Open it, delete it on Strava, then send again.";
+          action.say("Another copy blocks it", "Strava refused this ride: another copy is there. Open it");
         } else {
           action.flash(...STRAVA_TROUBLE[outcome.kind]);
         }

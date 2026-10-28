@@ -7,6 +7,7 @@
   "host_permissions": [
     "https://apollo.jfit.co/*",
     "https://www.strava.com/api/v3/uploads*",
+    "https://www.strava.com/api/v3/activities/*",
     "https://www.strava.com/oauth/*"
   ],
   "options_ui": {

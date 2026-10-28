@@ -61,7 +61,9 @@
         <h2>3. Connection</h2>
         <p>Status: <span id="status">…</span></p>
         <p>
-          The first upload asks Strava for permission to add activities, and nothing else.
+          The first upload asks Strava for permission to add activities and to read them.
+          The extension reads only the one activity Strava names when it calls a ride a
+          duplicate, to tell your own earlier upload from another app's copy.
           Stored in this browser only: the app's ID and secret, and Strava's access tokens.
           No athlete profile and no ride is kept.
         </p>

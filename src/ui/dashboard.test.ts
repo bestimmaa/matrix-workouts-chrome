@@ -321,6 +321,30 @@ describe("renderDashboard", () => {
       open.mockRestore();
     });
 
+    it("on a conflict links to the other copy once, then sends again", async () => {
+      const OTHER = "https://www.strava.com/activities/7";
+      const send = vi
+        .fn<() => Promise<StravaOutcome>>()
+        .mockResolvedValueOnce({ kind: "conflict", activityUrl: OTHER })
+        .mockResolvedValueOnce({ kind: "uploaded", activityUrl: ACTIVITY });
+      const open = vi.spyOn(window, "open").mockImplementation(() => null);
+      const button = stravaControl(withStrava(send))!;
+      button.click();
+      await settle();
+      expect(button.textContent).toContain("Another copy blocks it");
+      expect(button.title).toMatch(/delete it on Strava/);
+
+      button.click(); // opens the copy to delete
+      expect(open).toHaveBeenCalledWith(OTHER, "_blank", "noopener");
+      expect(button.textContent).toContain("Send to Strava");
+
+      button.click(); // and sends again
+      await settle();
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(button.textContent).toContain("On Strava");
+      open.mockRestore();
+    });
+
     it("says what went wrong in its own words, and stays ready to try again", async () => {
       let outcome: "cancelled" | "failed" = "cancelled";
       const button = stravaControl(withStrava(async () => ({ kind: outcome })))!;

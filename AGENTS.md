@@ -558,8 +558,8 @@ This handles personal health data.
   real token, and none ever should.**
 - Fetched history lives in a module variable for the life of the tab and is never
   written to `chrome.storage`. It is health data and it is one request away.
-- `host_permissions` is exactly `https://apollo.jfit.co/*` plus Strava's upload
-  and OAuth paths — nothing else, and no `<all_urls>`. The Strava grant names the
+- `host_permissions` is exactly `https://apollo.jfit.co/*` plus Strava's upload,
+  activity and OAuth paths — nothing else, and no `<all_urls>`. The Strava grant names the
   paths, not the host, so no other Strava API is reachable. The toolbar action uses **`activeTab`**, not a host permission for
   the site: it grants access only to the tab the user just clicked, only while they
   are on it. Do not trade it for a broader grant to save a line of code. The content script reaches `matrixworkouts.jfit.co` through its
@@ -602,8 +602,11 @@ someone other than jfit.co. What keeps the exception narrow:
   calls `strava.ts` directly to save the app and disconnect. That module is the only
   code that reads or writes the Strava storage. The athlete profile in Strava's
   token response is dropped.
-- **Asks for `activity:write` and nothing else.** That covers the upload and reading
-  its status. Unticking it on the consent page counts as declining.
+- **Asks for `activity:write` and `activity:read_all`, and reads one activity.**
+  Write covers the upload and its status. Read is used for one request only: the
+  activity a "duplicate" names, to see whether it is ours (below). It is
+  `read_all` because a rider whose default is "Only You" has nothing
+  `activity:read` can see. Unticking either on the consent page counts as declining.
 - **Visible and clearable.** The options page shows whether Strava is connected,
   and *Disconnect and forget* revokes the token on Strava's side and removes
   everything the extension stored for it.
@@ -619,11 +622,18 @@ console's summary says more (32:02 / 16.21 km on the 26 Oct ride), Strava shows 
 series. That is core's "the track is the series" rule, not a loss in the upload.
 
 **The watch ride is a duplicate, and the API cannot fix that.** The rider's watch
-already sends each ride to Strava, and Strava did not flag the file upload of the
-same ride as a duplicate (26 Oct 2026). The API has no endpoint for deleting an
-activity, so which copy stays is the rider's call, made on Strava. A second upload
-of the *same file* is flagged, and the button treats that as sent: it links to the
-activity Strava names in the error.
+already sends each ride to Strava. Usually Strava takes our upload beside it, but
+not always: on 28 Oct 2026, 6 of 46 uploads were refused as a "duplicate of" the
+overlapping Apple Watch activity, with no rule found for which. The API has no
+endpoint for deleting an activity, so which copy stays is the rider's call, made on
+Strava. Deleting the watch copy and sending again worked every time.
+
+**So a "duplicate" is checked, not trusted.** Strava says "duplicate of activity N"
+both for our own file sent twice and for another app's copy. The worker reads
+activity N: an `external_id` starting with this upload's (`matrix-workout-…Z.fit`)
+is ours, and the button says "Already on Strava". Anything else (the watch's is
+`stripped_<uuid>.fit`) is a conflict: the button says another copy blocks it and
+links to that copy, and the next click sends again.
 
 **The extension id is part of the setup.** `chrome.identity` redirects to
 `<extension-id>.chromiumapp.org`, and the Strava app's callback domain must match

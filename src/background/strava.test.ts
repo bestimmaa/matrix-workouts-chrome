@@ -57,7 +57,7 @@ function harness(
     remove: async (key) => void store.delete(key),
     authorize: async (url) => {
       authorized.push(url);
-      return options.authorize ? options.authorize(url) : `${REDIRECT}?state=&code=CODE&scope=read,activity:write`;
+      return options.authorize ? options.authorize(url) : `${REDIRECT}?state=&code=CODE&scope=read,activity:write,activity:read_all`;
     },
     redirectUri: REDIRECT,
     openSetup: async () => void (setup.opened += 1),
@@ -86,13 +86,14 @@ describe("authorizeUrl and codeFromRedirect", () => {
   it("asks for upload permission and nothing else", () => {
     const url = new URL(authorizeUrl("12345", REDIRECT));
     expect(url.origin + url.pathname).toBe("https://www.strava.com/oauth/authorize");
-    expect(url.searchParams.get("scope")).toBe("activity:write");
+    expect(url.searchParams.get("scope")).toBe("activity:write,activity:read_all");
     expect(url.searchParams.get("redirect_uri")).toBe(REDIRECT);
     expect(url.searchParams.get("response_type")).toBe("code");
   });
 
-  it("takes the code only when the upload scope was granted", () => {
-    expect(codeFromRedirect(`${REDIRECT}?code=abc&scope=read,activity:write`)).toBe("abc");
+  it("takes the code only when both scopes were granted", () => {
+    expect(codeFromRedirect(`${REDIRECT}?code=abc&scope=read,activity:write,activity:read_all`)).toBe("abc");
+    expect(codeFromRedirect(`${REDIRECT}?code=abc&scope=read,activity:write`)).toBeNull();
     expect(codeFromRedirect(`${REDIRECT}?code=abc&scope=read`)).toBeNull();
     expect(codeFromRedirect(`${REDIRECT}?error=access_denied`)).toBeNull();
   });
@@ -201,17 +202,41 @@ describe("uploadRide", () => {
     expect(await uploadRide(deps, MESSAGE)).toEqual({ kind: "setup" });
   });
 
-  it("turns a duplicate into a link to the ride Strava already has", async () => {
-    const { deps } = harness({
+  /*
+   * Strava says "duplicate" both for our own file sent twice and for another app's
+   * copy of the ride (an Apple Watch upload, 6 of 46 times on 28 Oct 2026). Only the
+   * activity's external_id tells them apart.
+   */
+  const collided = (extra: Record<string, Reply[]>) =>
+    harness({
       stored: CONNECTED,
       replies: {
         [UPLOADS]: [{ status: 201, body: { id: 3, activity_id: null, error: null } }],
         [`${UPLOADS}/3`]: [
           { status: 200, body: { id: 3, activity_id: null, error: "matrix-workout-x.fit duplicate of activity 20735485020" } },
         ],
+        ...extra,
       },
     });
+  const NAMED = "https://www.strava.com/api/v3/activities/20735485020";
+
+  it.each([
+    ["our own earlier upload", "matrix-workout-x.fit", "duplicate"],
+    ["an Apple Watch copy", "stripped_64148C14-9025-4942-839F-C57B8761BD79.fit", "conflict"],
+    ["an activity with no external id", undefined, "conflict"],
+  ] as const)("tells a duplicate of %s apart by its external id", async (_, externalId, kind) => {
+    const { deps, calls } = collided({ [NAMED]: [{ status: 200, body: { id: 20735485020, external_id: externalId } }] });
+    expect(await uploadRide(deps, MESSAGE)).toEqual({ kind, activityUrl: activity(20735485020) });
+    expect((calls.at(-1)!.init.headers as Record<string, string>)["Authorization"]).toBe("Bearer AT");
+  });
+
+  it("asks once for read access when the token predates it", async () => {
+    const { deps, authorized } = collided({
+      [TOKEN]: [tokenReply("WITH_READ")],
+      [NAMED]: [{ status: 401 }, { status: 200, body: { external_id: "matrix-workout-x.fit" } }],
+    });
     expect(await uploadRide(deps, MESSAGE)).toEqual({ kind: "duplicate", activityUrl: activity(20735485020) });
+    expect(authorized).toHaveLength(1);
   });
 
   it("says processing when Strava has not finished in time, and failed on any other error", async () => {

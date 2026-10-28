@@ -101,10 +101,11 @@ rather than a task belongs in AGENTS.md instead.
       as "duplicate of activity <watch id>". The other 40 were accepted alongside
       their watch copy. No rule for which was found. Deleting the watch copy and
       uploading again worked every time, so a deleted activity no longer blocks.
-      The batch must not read that error as "already sent" when the id it names is
-      not ours. Today `duplicateOf` treats every duplicate as sent and links to it,
-      which is right only for our own file sent twice. Fix it before the batch
-      relies on it.
+      The single-ride button already tells the two apart: it reads the named
+      activity's `external_id` and calls another app's copy a conflict (see
+      AGENTS.md). What is left for the batch: delete-then-retry cannot be automated
+      (no delete in the API), so a conflict goes on the review list. The rider
+      deletes the watch copy there and the batch retries those rides.
 
 - [ ] **Deleting the watch copies stays with the rider.** The Strava API has no
       delete endpoint. On 28 Oct they were deleted through the logged-in web session:
