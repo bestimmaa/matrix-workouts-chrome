@@ -596,9 +596,12 @@ someone other than jfit.co. What keeps the exception narrow:
   a new app only lets its owner connect, so there is nothing this extension could
   ship with. The id and secret are typed into the options page and stored in
   `chrome.storage.local`. They are never in the repo, which is public.
-- **Tokens stay in the service worker.** The content script sends the file and gets
-  back how the upload ended (`StravaOutcome`), never a token: it shares a page with
-  code we do not control. The athlete profile in Strava's token response is dropped.
+- **Tokens never reach a content script.** It sends the file to the service worker
+  and gets back how the upload ended (`StravaOutcome`), never a token: it shares a
+  page with code we do not control. The options page is the extension's own, so it
+  calls `strava.ts` directly to save the app and disconnect. That module is the only
+  code that reads or writes the Strava storage. The athlete profile in Strava's
+  token response is dropped.
 - **Asks for `activity:write` and nothing else.** That covers the upload and reading
   its status. Unticking it on the consent page counts as declining.
 - **Visible and clearable.** The options page shows whether Strava is connected,
@@ -609,9 +612,9 @@ someone other than jfit.co. What keeps the exception narrow:
 
 **Measured 28 Oct 2026: the button does what the file could not.** Two target-watts
 rides (26 and 28 Oct) sent through it arrived as `Ride` with `trainer: true`, named
-by `workoutTitle`. Strava's streams matched the record point for point: 192 and 271
-points, power, cadence and heart rate averages within 1, and time and distance
-equal to the series' end (1910 s / 16,109.5 m, 2700 s / 21,887 m). Where the
+by `workoutTitle`. Strava's streams matched the record on every figure compared:
+192 and 271 points, power, cadence and heart rate averages within 1, and time and
+distance equal to the series' end (1910 s / 16,109.5 m, 2700 s / 21,887 m). Where the
 console's summary says more (32:02 / 16.21 km on the 26 Oct ride), Strava shows the
 series. That is core's "the track is the series" rule, not a loss in the upload.
 

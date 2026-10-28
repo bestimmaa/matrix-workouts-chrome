@@ -1,0 +1,80 @@
+/*
+ * The palette, faces and theme switch, on their own so every surface shares them:
+ * the shadow root the content script mounts (`:host`), and plain documents, the
+ * options page and the fixture preview (`:root`). Each selector names both, so no
+ * stylesheet has to be rewritten to work outside a shadow root. Where the values
+ * come from, and why the chrome is not themed, is in styles.css's header.
+ */
+
+:host, :root {
+  color-scheme: light;
+
+  /* -- brand chrome: identical in both themes, as on the stock page -- */
+  --brand: #e1261c;
+  --brand-hover: #870000;
+  --machine: #ffa400;
+  --bar: #000000;
+  --bar-ink: #e6e6e6;
+
+  /* -- the plot ground is the site's own graph container, dark in both themes -- */
+  --plot: linear-gradient(135.28deg, #282828 0%, #333333 100%);
+  --plot-ink: #afb4b8;
+  --plot-ink-2: #ffffff;
+  --plot-grid: rgba(255, 255, 255, 0.1);
+  --plot-rule: rgba(255, 255, 255, 0.16);
+
+  /*
+   * Series slots. One set, not two: every mark this project draws sits on the dark
+   * plot ground above, in both themes, so there is no light-ground variant to keep
+   * in step. These are the dark-ground values of the validated colorblind-safe set
+   * — power, resistance, cadence, heart rate, in that fixed order. The site's own
+   * channel colours (greenSpeed #3f9c47 against redHeartRate #db3547) are a
+   * red/green pair and were deliberately not adopted.
+   */
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --s4: #d68cb5;
+
+  /* -- themed plane -- */
+  --plane: #f5f5f5;
+  --surface: #ffffff;
+  --ink: #191919;
+  --ink-2: #4c4c4c;
+  --ink-3: #666666;
+  --rule: #dde0e2;
+  --grid: #dde0e2;
+  --shadow: rgba(0, 0, 0, 0.22);
+
+  --sans: Industry, Rajdhani, "Helvetica Neue", Arial, sans-serif;
+  /* The app's own secondary face, used exactly where it uses it: metric labels. */
+  --alt: Arial, Helvetica, sans-serif;
+  /* Live numerals only — see the note on .read .v. */
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host(:not([data-theme="light"])), :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --plane: #191919;
+    --surface: #2d2d2d;
+    --ink: #ffffff;
+    --ink-2: #c2c6c9;
+    --ink-3: #999999;
+    --rule: #4c4c4c;
+    --grid: #4c4c4c;
+    --shadow: rgba(0, 0, 0, 0.55);
+  }
+}
+
+:host([data-theme="dark"]), :root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #191919;
+  --surface: #2d2d2d;
+  --ink: #ffffff;
+  --ink-2: #c2c6c9;
+  --ink-3: #999999;
+  --rule: #4c4c4c;
+  --grid: #4c4c4c;
+  --shadow: rgba(0, 0, 0, 0.55);
+}

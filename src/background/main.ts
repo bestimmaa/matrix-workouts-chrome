@@ -1,12 +1,7 @@
 import { API_ORIGIN } from "matrix-workouts-core";
-import {
-  disconnect,
-  isSaveAppMessage,
-  isUploadMessage,
-  saveApp,
-  uploadRide,
-  type StravaDeps,
-} from "./strava.js";
+import { chromeStrava } from "./chromeStrava.js";
+import { isApiFetch, type ApiFetchMessage, type ApiFetchReply } from "./message.js";
+import { isUploadMessage, uploadRide } from "./strava.js";
 
 /**
  * Service worker. It makes the cross-origin requests the content script cannot, and
@@ -22,30 +17,10 @@ import {
  * - **The workout API: a dumb forwarder.** One GET to one allowed origin, the body
  *   returned. Nothing parsed, cached, stored or logged — the jfit Authorization
  *   header passes through in memory and is gone when the response is.
- * - **Strava: the client itself** (`strava.ts`). Sign-in, upload and polling run
- *   here so the tokens, the one thing stored, never reach a page.
+ * - **Strava: the upload** (`strava.ts`). Sign-in, upload and polling run here so
+ *   the tokens, the one thing stored, never reach a content script. The options
+ *   page, which is the extension's own, calls the same module directly.
  */
-
-interface ApiFetchMessage {
-  type: "apiFetch";
-  url: string;
-  headers: Record<string, string>;
-}
-
-interface ApiFetchReply {
-  ok: boolean;
-  status: number;
-  body: unknown;
-  /** Set only on a transport failure, and never contains request headers. */
-  error?: string;
-}
-
-const messageType = (message: unknown): unknown =>
-  typeof message === "object" && message !== null ? (message as { type?: unknown }).type : undefined;
-
-function isApiFetch(message: unknown): message is ApiFetchMessage {
-  return messageType(message) === "apiFetch" && typeof (message as ApiFetchMessage).url === "string";
-}
 
 async function forward(message: ApiFetchMessage): Promise<ApiFetchReply> {
   // Hard allowlist. The url arrives from a content script, and a content script
@@ -76,32 +51,13 @@ async function forward(message: ApiFetchMessage): Promise<ApiFetchReply> {
   }
 }
 
-/** What the Strava client stands on. */
-const strava: StravaDeps = {
-  fetch: (url, init) => fetch(url, init),
-  load: async <T>(key: string) => (await chrome.storage.local.get(key))[key] as T | undefined,
-  save: (key, value) => chrome.storage.local.set({ [key]: value }),
-  remove: (key) => chrome.storage.local.remove(key),
-  authorize: async (url) => {
-    const redirect = await chrome.identity.launchWebAuthFlow({ url, interactive: true });
-    if (!redirect) throw new Error("Sign-in was closed.");
-    return redirect;
-  },
-  redirectUri: chrome.identity.getRedirectURL(),
-  openSetup: () => chrome.runtime.openOptionsPage(),
-  now: () => Date.now(),
-  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-};
-
 /**
- * One message, one guarded handler, one answer. Each returns `true` to keep the
- * channel open for its async reply, and always replies: the sender is awaiting it.
+ * The two requests a content script can make. Each returns `true` to keep the channel
+ * open for its async reply, and always replies: the sender is awaiting it.
  */
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (isApiFetch(message)) forward(message).then(sendResponse);
-  else if (isUploadMessage(message)) uploadRide(strava, message).then(sendResponse);
-  else if (isSaveAppMessage(message)) saveApp(strava, message.app).finally(() => sendResponse(null));
-  else if (messageType(message) === "stravaDisconnect") disconnect(strava).finally(() => sendResponse(null));
+  else if (isUploadMessage(message)) uploadRide(chromeStrava, message).then(sendResponse);
   else return false;
   return true;
 });

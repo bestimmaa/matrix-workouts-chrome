@@ -36,6 +36,12 @@ declare namespace chrome.identity {
   function getRedirectURL(path?: string): string;
 }
 
+declare namespace chrome.storage {
+  const onChanged: {
+    addListener(listener: (changes: Record<string, unknown>, areaName: string) => void): void;
+  };
+}
+
 declare namespace chrome.storage.local {
   function get(keys: string | string[]): Promise<Record<string, unknown>>;
   function set(items: Record<string, unknown>): Promise<void>;

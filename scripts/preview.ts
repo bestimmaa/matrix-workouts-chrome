@@ -18,10 +18,11 @@ g.document = dom.window.document;
 g.window = dom.window;
 
 const { toWorkout } = await import("matrix-workouts-core");
-const { documentStyles } = await import("../src/ui/documentStyles.js");
 const { renderDashboard } = await import("../src/ui/dashboard.js");
 
-const styles = readFileSync(resolve(process.cwd(), "src/ui/styles.css"), "utf8");
+const styles = ["tokens.css", "styles.css"]
+  .map((file) => readFileSync(resolve(process.cwd(), "src/ui", file), "utf8"))
+  .join("\n");
 
 const ids = process.argv.slice(2).length
   ? process.argv.slice(2)
@@ -38,14 +39,13 @@ for (const id of ids) {
   // upload, and the button is inert in a static file anyway.
   const view = renderDashboard(workout, { onShowStock: () => {}, sendToStrava: async () => ({ kind: "failed" }) });
 
-  const pageStyles = documentStyles(styles);
 
   const html = `<!doctype html>
 <html lang="en" data-theme="${process.env["THEME"] ?? ""}">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${workout.mode} · ${id}</title>
-<style>${pageStyles}
+<style>${styles}
   .sheet { position: static; min-height: 100vh; }
   body { margin: 0; }
 </style>

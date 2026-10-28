@@ -303,26 +303,22 @@ describe("renderDashboard", () => {
       expect(button.title).toContain("Target heart rate · 45 min @ 142 bpm");
     });
 
-    it("sends once, then opens the ride on Strava instead of sending again", async () => {
-      const send = vi.fn(async (): Promise<StravaOutcome> => ({ kind: "uploaded", activityUrl: ACTIVITY }));
+    it.each([
+      ["uploaded", "On Strava"],
+      ["duplicate", "Already on Strava"],
+    ] as const)("on %s says %s, then opens the ride instead of sending again", async (kind, label) => {
+      const send = vi.fn(async (): Promise<StravaOutcome> => ({ kind, activityUrl: ACTIVITY }));
       const open = vi.spyOn(window, "open").mockImplementation(() => null);
       const button = stravaControl(withStrava(send))!;
       button.click();
       expect(button.textContent).toContain("Sending");
       await settle();
-      expect(button.textContent).toContain("On Strava");
+      expect(button.textContent).toContain(label);
 
       button.click();
       expect(send).toHaveBeenCalledTimes(1);
       expect(open).toHaveBeenCalledWith(ACTIVITY, "_blank", "noopener");
       open.mockRestore();
-    });
-
-    it("treats a ride Strava already has as sent", async () => {
-      const button = stravaControl(withStrava(async () => ({ kind: "duplicate", activityUrl: ACTIVITY })))!;
-      button.click();
-      await settle();
-      expect(button.textContent).toContain("Already on Strava");
     });
 
     it("says what went wrong in its own words, and stays ready to try again", async () => {

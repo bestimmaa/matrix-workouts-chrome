@@ -1,4 +1,5 @@
 import styles from "../ui/styles.css?inline";
+import tokens from "../ui/tokens.css?inline";
 
 const HOST_ID = "full-matrix-workouts-root";
 
@@ -45,7 +46,7 @@ export function createSurface(options: SurfaceOptions = {}): Surface {
 
   const shadow = host.attachShadow({ mode: "open" });
   const style = document.createElement("style");
-  style.textContent = styles;
+  style.textContent = tokens + styles;
 
   const sheet = document.createElement("div");
   sheet.className = "sheet";

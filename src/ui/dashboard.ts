@@ -39,7 +39,7 @@ export type StravaOutcome =
   | { kind: "setup" | "cancelled" | "processing" | "failed" };
 
 /** What the button says, visibly and aloud, when an upload did not end on Strava. */
-const STRAVA_TROUBLE: Record<"setup" | "cancelled" | "processing" | "failed", readonly [string, string]> = {
+const STRAVA_TROUBLE: Record<Exclude<StravaOutcome, { activityUrl: string }>["kind"], readonly [string, string]> = {
   setup: ["Set up Strava first", "Strava is not set up. The extension's options page has opened."],
   cancelled: ["Not connected", "Strava was not connected"],
   processing: ["Still processing", "Strava is still processing the ride"],
@@ -72,33 +72,38 @@ export function renderDashboard(workout: Workout, options: DashboardOptions): HT
   if (panels.length) page.append(tableSection(workout, panels));
   page.append(footer(workout, plan.control, hr));
 
-  return el("div", { class: "wrap" }, [topBar(workout, options), band(workout), page]);
+  const actions = [
+    ...(options.sendToStrava ? [stravaButton(workout, options.sendToStrava)] : []),
+    shareMenu(workout),
+    exportButton(workout),
+  ];
+  return el("div", { class: "wrap" }, [
+    topBar(options.onShowStock, longDate(workout.startedAt), actions),
+    band(workout),
+    page,
+  ]);
 }
 
 /* ---------------------------------------------------------------- top bar */
 
 /**
  * The stock detail page's black header, slot for slot: a back control on the left,
- * the date in the middle, and the spacer on the right — which is where we sign the
- * view, since the user needs to know whose page this is, and where the export
- * action sits, because it acts on the whole page rather than on any one panel.
+ * the date (or what stands in for one) in the middle, and the spacer on the right —
+ * which is where we sign the view, since the user needs to know whose page this is,
+ * and where page-wide actions sit, because they act on the whole page rather than
+ * on any one panel. Every view wears this one bar, with or without actions.
  *
  * The back button stays first in the DOM. It is the control a user reaches for to
  * get out, and tab order should hand it to them before four charts' worth of
  * scrubbing.
  */
-function topBar(workout: Workout, options: DashboardOptions): HTMLElement {
+export function topBar(onShowStock: () => void, title: string, actions: Node[] = []): HTMLElement {
   const stock = el("button", { type: "button", class: "back", text: "Show stock page" });
-  stock.addEventListener("click", options.onShowStock);
+  stock.addEventListener("click", onShowStock);
   return el("div", { class: "topbar" }, [
     stock,
-    el("div", { class: "date", text: longDate(workout.startedAt) }),
-    el("div", { class: "actions" }, [
-      ...(options.sendToStrava ? [stravaButton(workout, options.sendToStrava)] : []),
-      shareMenu(workout),
-      exportButton(workout),
-      el("div", { class: "ident", text: "Full Matrix Workouts" }),
-    ]),
+    el("div", { class: "date", text: title }),
+    el("div", { class: "actions" }, [...actions, el("div", { class: "ident", text: "Full Matrix Workouts" })]),
   ]);
 }
 
@@ -128,27 +133,22 @@ function shareMenu(workout: Workout): HTMLElement {
     { "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": "sharemenu" },
   );
   const button = action.button;
-  // One render at a time: each is a 1080-wide canvas and a download, and a second
-  // click while the first is running would save the picture twice.
-  let rendering = false;
 
   const items = SHARE_FORMATS.map(({ format, text }) => {
     const item = el("button", { type: "button", role: "menuitem", text });
-    item.addEventListener("click", async () => {
+    item.addEventListener("click", () => {
       close();
       button.focus();
-      if (rendering) return;
-      rendering = true;
-      action.say("Rendering…", "Rendering the image");
-      try {
-        downloadBlob(shareFilename(workout, format), await shareCardPng(workout, format));
-        action.flash("Saved", "Image saved");
-      } catch {
-        // Deliberately without the error, like the export: say enough, quote nothing.
-        action.flash("Image failed", "Image failed");
-      } finally {
-        rendering = false;
-      }
+      // One render at a time: each is a 1080-wide canvas and a download.
+      void action.run(["Rendering…", "Rendering the image"], async () => {
+        try {
+          downloadBlob(shareFilename(workout, format), await shareCardPng(workout, format));
+          action.flash("Saved", "Image saved");
+        } catch {
+          // Deliberately without the error, like the export: say enough, quote nothing.
+          action.flash("Image failed", "Image failed");
+        }
+      });
     });
     return item;
   });
@@ -237,30 +237,26 @@ function stravaButton(workout: Workout, send: () => Promise<StravaOutcome>): HTM
   );
   action.button.classList.add("strava");
   let activityUrl: string | null = null;
-  let sending = false;
 
-  action.button.addEventListener("click", async () => {
+  action.button.addEventListener("click", () => {
     if (activityUrl) {
       window.open(activityUrl, "_blank", "noopener");
       return;
     }
-    if (sending) return;
-    sending = true;
-    action.say("Sending…", "Sending to Strava");
-    try {
-      const outcome = await send();
-      if (outcome.kind === "uploaded" || outcome.kind === "duplicate") {
-        activityUrl = outcome.activityUrl;
-        action.button.title = "Open this ride on Strava.";
-        action.say(outcome.kind === "uploaded" ? "On Strava" : "Already on Strava", "Open this ride on Strava");
-      } else {
-        action.flash(...STRAVA_TROUBLE[outcome.kind]);
+    void action.run(["Sending…", "Sending to Strava"], async () => {
+      try {
+        const outcome = await send();
+        if (outcome.kind === "uploaded" || outcome.kind === "duplicate") {
+          activityUrl = outcome.activityUrl;
+          action.button.title = "Open this ride on Strava.";
+          action.say(outcome.kind === "uploaded" ? "On Strava" : "Already on Strava", "Open this ride on Strava");
+        } else {
+          action.flash(...STRAVA_TROUBLE[outcome.kind]);
+        }
+      } catch {
+        action.flash(...STRAVA_TROUBLE.failed);
       }
-    } catch {
-      action.flash(...STRAVA_TROUBLE.failed);
-    } finally {
-      sending = false;
-    }
+    });
   });
   return action.button;
 }
@@ -275,16 +271,28 @@ function stravaButton(workout: Workout, send: () => Promise<StravaOutcome>): HTM
  * `flash` shows an outcome and returns to idle after a moment; any later `say` or
  * `flash` cancels that return, so a second click can never have its own message
  * overwritten by the first one's timer.
+ *
+ * `run` does slow work one at a time: a click while it is running does nothing, so
+ * a double click cannot save a picture twice or upload a ride twice. The work says
+ * its own outcome.
  */
+interface BarAction {
+  button: HTMLButtonElement;
+  say(visible: string, spoken: string): void;
+  flash(visible: string, spoken: string): void;
+  run(busy: readonly [string, string], work: () => Promise<void>): Promise<void>;
+}
+
 function barAction(
   glyph: string,
   [idleText, idleName]: readonly [string, string],
   title: string,
   attrs: Record<string, string> = {},
-): { button: HTMLButtonElement; say(visible: string, spoken: string): void; flash(visible: string, spoken: string): void } {
+): BarAction {
   const label = el("span", { class: "label" });
   const button = el("button", { type: "button", class: "baraction", title, ...attrs }, [icon(glyph), label]);
   let reset: ReturnType<typeof setTimeout> | undefined;
+  let running = false;
   const say = (visible: string, spoken: string) => {
     clearTimeout(reset);
     label.textContent = visible;
@@ -297,6 +305,16 @@ function barAction(
     flash(visible, spoken) {
       say(visible, spoken);
       reset = setTimeout(() => say(idleText, idleName), 2500);
+    },
+    async run(busy, work) {
+      if (running) return;
+      running = true;
+      say(...busy);
+      try {
+        await work();
+      } finally {
+        running = false;
+      }
     },
   };
 }

@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Full Matrix Workouts — Strava</title>
-    <!-- The palette, faces and button come from the view's stylesheet, which
-         options.js adds on load. Only this page's layout is here. -->
+    <!-- The palette and faces come from the view's tokens.css, which options.js adds
+         on load. This page's own layout is here. -->
     <style>
       body { margin: 0; background: var(--plane); color: var(--ink); font: 15px/1.5 var(--sans); }
       header { background: var(--bar); color: var(--bar-ink); padding: 12px 16px; font-weight: 700; letter-spacing: 0.02em; }
@@ -14,10 +14,14 @@
       h1 { font-size: 21px; margin: 0 0 8px; }
       h2 { font-size: 17px; margin: 0 0 8px; }
       p, ol { margin: 0 0 12px; }
-      code { font-family: var(--mono); background: var(--plane); padding: 1px 4px; }
+      code { font-family: var(--mono); background: var(--plane); padding: 1px 4px; overflow-wrap: anywhere; }
       label { display: block; font: 13px var(--alt); color: var(--ink-3); margin: 12px 0 4px; }
       input { width: 100%; padding: 8px; font: 15px var(--mono); border: 1px solid var(--rule); border-radius: 0; background: var(--plane); color: var(--ink); }
-      form button, #disconnect { margin-top: 16px; }
+      * { box-sizing: border-box; }
+      /* The site's button: square, red, uppercase. */
+      button { margin-top: 16px; padding: 10px 16px; border: 0; border-radius: 0; background: var(--brand); color: #ffffff; font: 800 13px var(--sans); letter-spacing: 0.03em; text-transform: uppercase; cursor: pointer; }
+      button:hover { background: var(--brand-hover); }
+      button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
       #disconnect, #disconnect:hover { background: transparent; color: var(--ink); border: 1px solid var(--rule); }
       #status { font-weight: 700; }
     </style>

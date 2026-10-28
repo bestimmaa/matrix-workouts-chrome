@@ -4,6 +4,7 @@ import {
   TOKENS_KEY,
   authorizeUrl,
   codeFromRedirect,
+  connection,
   disconnect,
   duplicateOf,
   saveApp,
@@ -240,6 +241,14 @@ describe("uploadRide when storage fails", () => {
   });
 });
 
+describe("connection", () => {
+  it("tells connected from set up from nothing at all", async () => {
+    expect(await connection(harness({ stored: CONNECTED }).deps)).toEqual({ app: APP, connected: true });
+    expect(await connection(harness({ stored: { [APP_KEY]: APP } }).deps)).toEqual({ app: APP, connected: false });
+    expect(await connection(harness().deps)).toEqual({ app: undefined, connected: false });
+  });
+});
+
 describe("saveApp", () => {
   it("keeps the tokens for the same app and drops them for a different one", async () => {
     const { deps, store } = harness({ stored: CONNECTED });
@@ -255,7 +264,7 @@ describe("disconnect", () => {
   it("refreshes an expired token so the revoke can work", async () => {
     const { deps, store, calls } = harness({
       stored: { [APP_KEY]: APP, [TOKENS_KEY]: { ...FRESH, expiresAt: NOW_S - 60 } },
-      replies: { [TOKEN]: [tokenReply("LIVE")], DEAUTHORIZE: [{ status: 200 }] },
+      replies: { [TOKEN]: [tokenReply("LIVE")], [DEAUTHORIZE]: [{ status: 200 }] },
     });
     await disconnect(deps);
     expect(calls.map((c) => c.url)).toEqual([TOKEN, DEAUTHORIZE]);

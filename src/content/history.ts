@@ -5,6 +5,7 @@ import {
   type HistoryResult,
   type ReadableStorage,
 } from "matrix-workouts-core";
+import type { ApiFetchReply } from "../background/message.js";
 import { askWorker } from "./worker.js";
 
 /**
@@ -21,7 +22,7 @@ const viaServiceWorker: FetchLike = async (url, init) => {
     throw new Error(`The background worker only makes GET requests, not ${init.method}.`);
   }
 
-  const reply = await askWorker<{ ok: boolean; status: number; body: unknown; error?: string }>({
+  const reply = await askWorker<ApiFetchReply>({
     type: "apiFetch",
     url,
     headers: init.headers,

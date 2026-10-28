@@ -8,7 +8,7 @@ import {
   type Workout,
   ApiError,
 } from "matrix-workouts-core";
-import { renderDashboard } from "../ui/dashboard.js";
+import { renderDashboard, topBar } from "../ui/dashboard.js";
 import { machineLabel } from "../ui/format.js";
 import { el } from "../ui/svg.js";
 import { loadHistory } from "./history.js";
@@ -61,14 +61,8 @@ function showStock(): void {
  * rather than cardio amber: there is no workout behind it to colour it by.
  */
 function shell(title: string, children: (Node | string)[]): HTMLElement {
-  const back = el("button", { type: "button", class: "back", text: "Show stock page" });
-  back.addEventListener("click", showStock);
   return el("div", { class: "wrap" }, [
-    el("div", { class: "topbar" }, [
-      back,
-      el("div", { class: "date", text: "Full telemetry" }),
-      el("div", { class: "ident", text: "Full Matrix Workouts" }),
-    ]),
+    topBar(showStock, "Full telemetry"),
     el("h1", { class: "band alert", text: title }),
     el("div", { class: "page" }, children),
   ]);

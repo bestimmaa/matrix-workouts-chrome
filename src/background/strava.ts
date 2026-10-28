@@ -1,5 +1,6 @@
 import type { StravaUpload } from "matrix-workouts-core";
 import type { StravaOutcome } from "../ui/dashboard.js";
+import { messageType } from "./message.js";
 
 /**
  * The Strava client: sign-in, the upload, and waiting for Strava to process it.
@@ -11,8 +12,8 @@ import type { StravaOutcome } from "../ui/dashboard.js";
  * **The app is the rider's own.** Strava gives no sign-in without a client secret,
  * and a new API app only lets its owner connect, so there is no shared app this
  * extension could ship with. The rider registers one and enters it on the options
- * page, which hands it to `saveApp`. Everything Strava-related in
- * `chrome.storage.local` is written here. No athlete profile is kept: the token
+ * page, which calls `saveApp`. Everything Strava-related in `chrome.storage.local`
+ * is written and read here. No athlete profile is kept: the token
  * response carries one, and it is dropped here.
  */
 
@@ -23,7 +24,7 @@ const DEAUTHORIZE = `${STRAVA_ORIGIN}/oauth/deauthorize`;
 /** Upload and read back the upload's status. Nothing else is asked for. */
 const SCOPE = "activity:write";
 
-/** Storage keys. The options page reads them to show the connection status. */
+/** Storage keys, exported for the tests. */
 export const APP_KEY = "stravaApp";
 export const TOKENS_KEY = "stravaTokens";
 
@@ -47,32 +48,13 @@ export interface UploadMessage {
   fileBase64: string;
 }
 
-/** The rider's app, from the options page. */
-export interface SaveAppMessage {
-  type: "stravaSaveApp";
-  app: StravaApp;
-}
-
 export function isUploadMessage(message: unknown): message is UploadMessage {
-  const m = message as Partial<UploadMessage> | null;
+  const m = message as Partial<UploadMessage>;
   return (
-    typeof m === "object" &&
-    m !== null &&
-    m.type === "stravaUpload" &&
+    messageType(message) === "stravaUpload" &&
     typeof m.fields === "object" &&
     typeof m.filename === "string" &&
     typeof m.fileBase64 === "string"
-  );
-}
-
-export function isSaveAppMessage(message: unknown): message is SaveAppMessage {
-  const m = message as Partial<SaveAppMessage> | null;
-  return (
-    typeof m === "object" &&
-    m !== null &&
-    m.type === "stravaSaveApp" &&
-    typeof m.app?.clientId === "string" &&
-    typeof m.app.clientSecret === "string"
   );
 }
 
@@ -205,11 +187,13 @@ function settled(status: UploadStatus): StravaOutcome | null {
   return status.activity_id ? { kind: "uploaded", activityUrl: activityUrl(status.activity_id) } : null;
 }
 
-async function post(deps: StravaDeps, token: string, message: UploadMessage): Promise<Response> {
+const bearer = (tokens: StravaTokens) => ({ Authorization: `Bearer ${tokens.accessToken}` });
+
+async function post(deps: StravaDeps, tokens: StravaTokens, message: UploadMessage): Promise<Response> {
   const form = new FormData();
   for (const [name, value] of Object.entries(message.fields)) form.append(name, value);
   form.append("file", new Blob([fromBase64(message.fileBase64)]), message.filename);
-  return deps.fetch(UPLOADS, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+  return deps.fetch(UPLOADS, { method: "POST", headers: bearer(tokens), body: form });
 }
 
 /** There is no app to sign in with: show the rider where to enter one. */
@@ -240,11 +224,11 @@ export async function uploadRide(deps: StravaDeps, message: UploadMessage): Prom
 async function upload(deps: StravaDeps, app: StravaApp, message: UploadMessage): Promise<StravaOutcome> {
   let tokens = await accessToken(deps, app);
   if (!tokens) return { kind: "cancelled" };
-  let response = await post(deps, tokens.accessToken, message);
+  let response = await post(deps, tokens, message);
   if (response.status === 401) {
     tokens = await signIn(deps, app);
     if (!tokens) return { kind: "cancelled" };
-    response = await post(deps, tokens.accessToken, message);
+    response = await post(deps, tokens, message);
   }
   if (!response.ok) return { kind: "failed" };
 
@@ -254,15 +238,22 @@ async function upload(deps: StravaDeps, app: StravaApp, message: UploadMessage):
     if (outcome) return outcome;
     if (typeof status.id !== "number") return { kind: "failed" };
     await deps.sleep(POLL_INTERVAL_MS);
-    const poll = await deps.fetch(`${UPLOADS}/${status.id}`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${tokens.accessToken}` },
-    });
+    const poll = await deps.fetch(`${UPLOADS}/${status.id}`, { headers: bearer(tokens) });
     if (!poll.ok) return { kind: "failed" };
     status = (await poll.json()) as UploadStatus;
   }
   return settled(status) ?? { kind: "processing" };
 }
+
+/** For the options page: whether Strava is connected, and if not, whether there is an app to connect with. */
+export async function connection(deps: StravaDeps): Promise<{ app: StravaApp | undefined; connected: boolean }> {
+  const app = await deps.load<StravaApp>(APP_KEY);
+  return { app, connected: (await deps.load<StravaTokens>(TOKENS_KEY)) !== undefined };
+}
+
+/** Whether a storage change touches what `connection` reports. */
+export const touchesConnection = (changedKeys: string[]): boolean =>
+  changedKeys.includes(APP_KEY) || changedKeys.includes(TOKENS_KEY);
 
 /** Keep the rider's app. Tokens belong to the app that issued them, so a different app starts over. */
 export async function saveApp(deps: StravaDeps, app: StravaApp): Promise<void> {
