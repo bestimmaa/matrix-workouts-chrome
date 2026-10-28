@@ -11,7 +11,7 @@ The version history source of truth is git tags in the format `vMAJOR.MINOR.PATC
 - **Send to Strava** in the view's header: uploads the ride's FIT file to the
   rider's Strava account with `trainer=1`, so it arrives as an indoor ride, and
   with the program's title as its name. Built on `stravaUpload` from
-  `matrix-workouts-core`. Sign-in goes through the rider's own Strava API app,
+  `matrix-workouts-core` 0.4.0. Sign-in goes through the rider's own Strava API app,
   entered on a new options page that also shows what is stored and clears it. The
   manifest gains `identity`, `storage` and host access to Strava's upload and OAuth
   endpoints.
