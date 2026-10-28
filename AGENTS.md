@@ -607,6 +607,14 @@ someone other than jfit.co. What keeps the exception narrow:
 - **A failure quotes nothing.** Strava's error text stays in the worker. The button
   says "Upload failed", "Not connected" or "Set up Strava first" in its own words.
 
+**Measured 28 Oct 2026: the button does what the file could not.** Two target-watts
+rides (26 and 28 Oct) sent through it arrived as `Ride` with `trainer: true`, named
+by `workoutTitle`. Strava's streams matched the record point for point: 192 and 271
+points, power, cadence and heart rate averages within 1, and time and distance
+equal to the series' end (1910 s / 16,109.5 m, 2700 s / 21,887 m). Where the
+console's summary says more (32:02 / 16.21 km on the 26 Oct ride), Strava shows the
+series. That is core's "the track is the series" rule, not a loss in the upload.
+
 **The watch ride is a duplicate, and the API cannot fix that.** The rider's watch
 already sends each ride to Strava, and Strava did not flag the file upload of the
 same ride as a duplicate (26 Oct 2026). The API has no endpoint for deleting an
