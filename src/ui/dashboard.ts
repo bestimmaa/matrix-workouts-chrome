@@ -11,6 +11,8 @@ import {
   planWorkout,
   workoutExportJson,
   workoutTitle,
+  type ControlSignature,
+  type HeartRateStats,
   type LinearScale,
   type PanelGeometry,
   type Workout,
@@ -64,9 +66,8 @@ export function renderDashboard(workout: Workout, options: DashboardOptions): HT
   ]);
 
   if (panels.length) {
-    const readouts = new Map<string, HTMLElement>();
-    const consoleRow = readoutConsole(panels, readouts, workout.durationSeconds);
-    const stack = panelStack(panels, x, plan.elapsedSeconds, readouts, consoleRow);
+    const consoleRow = readoutConsole(panels, workout.durationSeconds);
+    const stack = panelStack(panels, x, plan.elapsedSeconds, consoleRow);
     page.append(el("section", { class: "telemetry" }, [consoleRow.root, stack]));
   }
 
@@ -405,21 +406,24 @@ function emptyState(): HTMLElement {
 
 /* --------------------------------------------------------- console readout */
 
+/** A panel's value as the readouts and the table print it; a dropout is a dash. */
+function reading(panel: PanelGeometry, value: number | null | undefined): string {
+  return value === null || value === undefined ? "—" : value.toFixed(panel.spec.precision ?? 0);
+}
+
 interface ConsoleRow {
   root: HTMLElement;
   clockKey: HTMLElement;
   clockValue: HTMLElement;
   /** What the clock reads when nothing is under the cursor: the ride length. */
   idleClock: string;
+  /** One value cell per panel, in panel order. The crosshair fills them in. */
+  readouts: HTMLElement[];
 }
 
-function readoutConsole(
-  panels: PanelGeometry[],
-  readouts: Map<string, HTMLElement>,
-  totalSeconds: number,
-): ConsoleRow {
-  const clockKey = el("span", { class: "k", text: "Session average" });
-  const clockValue = el("span", { class: "v", text: clock(totalSeconds) });
+function readoutConsole(panels: PanelGeometry[], totalSeconds: number): ConsoleRow {
+  const clockKey = el("span", { class: "k" });
+  const clockValue = el("span", { class: "v" });
   // `auto repeat(auto-fit, ...)` collapses to a single column, so the count has to
   // be explicit — it varies by machine and program. It is passed as a custom
   // property rather than as the grid declaration itself, because an inline
@@ -430,11 +434,8 @@ function readoutConsole(
     style: `--channels: ${panels.length}`,
   }, [el("div", { class: "clock" }, [clockKey, clockValue])]);
 
-  for (const panel of panels) {
-    const value = el("span", {
-      text: panel.stats.mean.toFixed(panel.spec.precision ?? 0),
-    });
-    readouts.set(panel.spec.key, value);
+  const readouts = panels.map((panel) => {
+    const value = el("span");
     // The channel's colour is the cell's top rule — the site marks its own blocks
     // with a coloured edge rather than a dot, and this row is the closest thing we
     // have to its row of coloured channel buttons.
@@ -444,8 +445,9 @@ function readoutConsole(
         el("span", { class: "v" }, [value, el("small", { text: panel.spec.shortUnit })]),
       ]),
     );
-  }
-  return { root, clockKey, clockValue, idleClock: clock(totalSeconds) };
+    return value;
+  });
+  return { root, clockKey, clockValue, idleClock: clock(totalSeconds), readouts };
 }
 
 /* ----------------------------------------------------------------- panels */
@@ -454,7 +456,6 @@ function panelStack(
   panels: PanelGeometry[],
   x: LinearScale,
   elapsedSeconds: number[],
-  readouts: Map<string, HTMLElement>,
   consoleRow: ConsoleRow,
 ): HTMLElement {
   const stack = el("div", {
@@ -466,7 +467,7 @@ function panelStack(
       "Use left and right arrow keys to scrub, shift for a larger step, escape to clear.",
   });
 
-  const crosshairs: { line: SVGElement; dot: SVGElement; panel: PanelGeometry }[] = [];
+  const crosshairs: Crosshair[] = [];
 
   panels.forEach((panel, index) => {
     const last = index === panels.length - 1;
@@ -477,7 +478,7 @@ function panelStack(
     });
 
     const caption = el("figcaption", {}, [
-      svgSwatch(),
+      el("span", { class: "swatch", "aria-hidden": "true" }),
       el("h2", { text: panel.spec.label }),
       el("span", { class: "unit", text: panel.spec.unit }),
       el("span", { class: "range", text: panel.summary }),
@@ -533,7 +534,7 @@ function panelStack(
       fill: `var(${panel.spec.colorVar})`,
     });
     plot.append(line, dot);
-    crosshairs.push({ line, dot, panel });
+    crosshairs.push({ line, dot, panel, readout: consoleRow.readouts[index]! });
 
     if (last) plot.append(...xAxis(x, elapsedSeconds, height));
 
@@ -541,12 +542,8 @@ function panelStack(
     stack.append(figure);
   });
 
-  wireCrosshair(stack, crosshairs, x, elapsedSeconds, readouts, consoleRow, panels);
+  wireCrosshair(stack, crosshairs, x, elapsedSeconds, consoleRow);
   return stack;
-}
-
-function svgSwatch(): HTMLElement {
-  return el("span", { class: "swatch", "aria-hidden": "true" });
 }
 
 /** X ticks live below the plot band, in the last panel's extra height. */
@@ -582,14 +579,20 @@ function xAxis(
 
 /* -------------------------------------------------------------- crosshair */
 
+/** One panel's share of the crosshair: its rule, its marker, and its console cell. */
+interface Crosshair {
+  line: SVGElement;
+  dot: SVGElement;
+  panel: PanelGeometry;
+  readout: HTMLElement;
+}
+
 function wireCrosshair(
   stack: HTMLElement,
-  crosshairs: { line: SVGElement; dot: SVGElement; panel: PanelGeometry }[],
+  crosshairs: Crosshair[],
   x: LinearScale,
   elapsedSeconds: number[],
-  readouts: Map<string, HTMLElement>,
   consoleRow: ConsoleRow,
-  panels: PanelGeometry[],
 ): void {
   let current = -1;
 
@@ -597,10 +600,7 @@ function wireCrosshair(
     stack.classList.remove("live");
     consoleRow.clockKey.textContent = "Session average";
     consoleRow.clockValue.textContent = consoleRow.idleClock;
-    for (const panel of panels) {
-      const out = readouts.get(panel.spec.key);
-      if (out) out.textContent = panel.stats.mean.toFixed(panel.spec.precision ?? 0);
-    }
+    for (const { panel, readout } of crosshairs) readout.textContent = reading(panel, panel.stats.mean);
   };
   idle();
 
@@ -610,23 +610,21 @@ function wireCrosshair(
     if (index < 0) return idle();
 
     stack.classList.add("live");
-    const px = x(elapsedSeconds[index] ?? 0);
-    for (const { line, dot, panel } of crosshairs) {
+    const px = x(elapsedSeconds[index] ?? 0).toFixed(1);
+    for (const { line, dot, panel, readout } of crosshairs) {
       const value = panel.spec.values[index];
-      line.setAttribute("x1", px.toFixed(1));
-      line.setAttribute("x2", px.toFixed(1));
-      const out = readouts.get(panel.spec.key);
+      line.setAttribute("x1", px);
+      line.setAttribute("x2", px);
+      readout.textContent = reading(panel, value);
       if (value === null || value === undefined) {
         // A dropout has no position to point at; say so rather than parking the
         // marker on the last good reading.
         dot.setAttribute("opacity", "0");
-        if (out) out.textContent = "—";
         continue;
       }
       dot.removeAttribute("opacity");
-      dot.setAttribute("cx", px.toFixed(1));
+      dot.setAttribute("cx", px);
       dot.setAttribute("cy", panel.y(value).toFixed(1));
-      if (out) out.textContent = value.toFixed(panel.spec.precision ?? 0);
     }
     consoleRow.clockKey.textContent = "At";
     consoleRow.clockValue.textContent = clock(elapsedSeconds[index] ?? 0);
@@ -718,14 +716,7 @@ function tableSection(workout: Workout, panels: PanelGeometry[]): HTMLElement {
       el("td", { text: clock(sample.elapsedSeconds) }),
       el("td", { text: km(sample.cumulativeDistanceMeters) }),
     ]);
-    for (const panel of panels) {
-      const value = panel.spec.values[index];
-      row.append(
-        el("td", {
-          text: value === null || value === undefined ? "—" : value.toFixed(panel.spec.precision ?? 0),
-        }),
-      );
-    }
+    for (const panel of panels) row.append(el("td", { text: reading(panel, panel.spec.values[index]) }));
     body.append(row);
   });
 
@@ -741,8 +732,8 @@ function tableSection(workout: Workout, panels: PanelGeometry[]): HTMLElement {
 
 function footer(
   workout: Workout,
-  control: { mode: string; minLevel: number; maxLevel: number; changes: number; meanStep: number },
-  hr: ReturnType<typeof heartRateStats>,
+  control: ControlSignature,
+  hr: HeartRateStats,
 ): HTMLElement {
   // The workout id belongs here rather than in the top bar: the bar's third slot
   // collapses on a narrow viewport, and an id that disappears with the layout is

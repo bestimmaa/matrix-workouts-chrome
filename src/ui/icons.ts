@@ -33,7 +33,7 @@ const PATHS: Record<string, string[]> = {
   sweat: ["M12 3c3.5 4.2 5.5 6.9 5.5 9.4a5.5 5.5 0 1 1-11 0C6.5 9.9 8.5 7.2 12 3Z"],
 };
 
-export function icon(name: keyof typeof PATHS | string): SVGElement {
+export function icon(name: string): SVGElement {
   const d = PATHS[name] ?? PATHS["samples"]!;
   return svg(
     "svg",

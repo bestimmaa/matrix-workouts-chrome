@@ -39,7 +39,6 @@ for (const id of ids) {
   // upload, and the button is inert in a static file anyway.
   const view = renderDashboard(workout, { onShowStock: () => {}, sendToStrava: async () => ({ kind: "failed" }) });
 
-
   const html = `<!doctype html>
 <html lang="en" data-theme="${process.env["THEME"] ?? ""}">
 <meta charset="utf-8">
