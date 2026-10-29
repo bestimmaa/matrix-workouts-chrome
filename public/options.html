@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Full Matrix Workouts — Strava</title>
+    <!-- The palette and faces come from the view's tokens.css, which options.js adds
+         on load. This page's own layout is here. -->
+    <style>
+      body { margin: 0; background: var(--plane); color: var(--ink); font: 15px/1.5 var(--sans); }
+      header { background: var(--bar); color: var(--bar-ink); padding: 12px 16px; font-weight: 700; letter-spacing: 0.02em; }
+      main { max-width: 640px; margin: 0 auto; padding: 16px; }
+      section { background: var(--surface); border-left: 6px solid var(--machine); padding: 16px 20px; margin: 16px 0; }
+      h1 { font-size: 21px; margin: 0 0 8px; }
+      h2 { font-size: 17px; margin: 0 0 8px; }
+      p, ol { margin: 0 0 12px; }
+      code { font-family: var(--mono); background: var(--plane); padding: 1px 4px; overflow-wrap: anywhere; }
+      label { display: block; font: 13px var(--alt); color: var(--ink-3); margin: 12px 0 4px; }
+      input { width: 100%; padding: 8px; font: 15px var(--mono); border: 1px solid var(--rule); border-radius: 0; background: var(--plane); color: var(--ink); }
+      * { box-sizing: border-box; }
+      /* The site's button: square, red, uppercase. */
+      button { margin-top: 16px; padding: 10px 16px; border: 0; border-radius: 0; background: var(--brand); color: #ffffff; font: 800 13px var(--sans); letter-spacing: 0.03em; text-transform: uppercase; cursor: pointer; }
+      button:hover { background: var(--brand-hover); }
+      button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+      #disconnect, #disconnect:hover { background: transparent; color: var(--ink); border: 1px solid var(--rule); }
+      #status { font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <header>Full Matrix Workouts</header>
+    <main>
+      <h1>Send to Strava</h1>
+      <p>
+        The workout view's <b>Send to Strava</b> button uploads a ride's FIT file to your
+        Strava account as an indoor ride. It signs in through a Strava API app that you
+        register yourself: Strava only lets an app's owner connect to a new app.
+      </p>
+
+      <section>
+        <h2>1. Register an app on Strava</h2>
+        <ol>
+          <li>Open <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener">strava.com/settings/api</a>.</li>
+          <li>Set <b>Authorization Callback Domain</b> to <code id="callback"></code></li>
+          <li>Copy the app's Client ID and Client Secret into the fields below.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>2. Your app</h2>
+        <form id="app">
+          <label for="clientId">Client ID</label>
+          <input id="clientId" autocomplete="off" inputmode="numeric" required />
+          <label for="clientSecret">Client Secret</label>
+          <input id="clientSecret" type="password" autocomplete="off" required />
+          <button type="submit">Save</button>
+          <span id="saved" role="status"></span>
+        </form>
+      </section>
+
+      <section>
+        <h2>3. Connection</h2>
+        <p>Status: <span id="status">…</span></p>
+        <p>
+          The first upload asks Strava for permission to add activities and to read them.
+          The extension reads only the one activity Strava names when it calls a ride a
+          duplicate, to tell your own earlier upload from another app's copy.
+          Stored in this browser only: the app's ID and secret, and Strava's access tokens.
+          No athlete profile and no ride is kept.
+        </p>
+        <button type="button" id="disconnect">Disconnect and forget</button>
+      </section>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

@@ -31,6 +31,13 @@ The view's header has **Share image**, which saves the ride as a picture to post
 9:16 story or a 4:5 feed post — and **Export JSON**, which saves the whole record.
 Both are downloads made by your browser; nothing is uploaded.
 
+**Send to Strava** is the one action that uploads, and only when you press it. It
+sends the ride's FIT file to your own Strava account as an indoor ride, named after
+the program ("Sprint 8 · sweat score 9360"). It needs a Strava API app of your own,
+because Strava only lets an app's owner connect to a new app. The extension's
+options page walks through registering one; the first upload then asks you to
+connect.
+
 ## Download your history
 
 The site's own page only holds about the current week, and errors on anything older.

@@ -1,19 +1,22 @@
 import { defineConfig } from "vite";
 
 /**
- * Two build targets, because they need different output formats and rollup takes
+ * Three build targets, because they need different output formats and rollup takes
  * one format per build:
  *
  *   content    MV3 content scripts are not ES modules -> a single IIFE bundle,
  *              no code splitting, no dynamic import.
  *   background the service worker is declared "type": "module" -> ESM.
+ *   options    the options page's script, loaded by a classic <script> -> IIFE.
  *
- * `npm run build` runs both; the second passes `emptyOutDir: false` so it does not
- * delete the first. `public/` (the manifest) is copied on the content pass only.
+ * `npm run build` runs all three; the later ones pass `emptyOutDir: false` so they
+ * do not delete the first. `public/` (the manifest and options.html) is copied on
+ * the content pass only.
  */
 const TARGETS = {
   content: { entry: "src/content/main.ts", format: "iife" },
   background: { entry: "src/background/main.ts", format: "es" },
+  options: { entry: "src/options/main.ts", format: "iife" },
 } as const;
 
 export default defineConfig(({ mode }) => {

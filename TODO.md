@@ -58,3 +58,67 @@ rather than a task belongs in AGENTS.md instead.
       its own list cannot reach older rides and errors on them. Ours could, and it
       would make the history a first-class thing the UI holds rather than a one-shot
       fetch behind a button.
+
+## Strava
+
+- [ ] **Send the whole history to Strava, replacing the Apple Watch copies.** The
+      button sends one ride. A backfill of every ride was done once by hand on 28 Oct
+      2026 (63 rides up, 46 watch copies deleted), so this is for the next time, and
+      for a history that keeps growing. The design that run supports:
+
+      - **Runs in the content script, one upload per worker message.** Only the
+        content script can read the jfit token in the site's `localStorage`, and
+        "Load full history" already puts every ride in memory. Loop over the
+        selected rides and send the existing `stravaUpload` message for each. Every
+        upload is a short worker task, so the service worker's idle limit never
+        matters. The tab must stay open. Nothing new is stored: the history stays
+        in memory, and Strava itself is the record of what is done.
+      - **Match against Strava first.** List the athlete's activities for the date
+        range. That needs `activity:read_all` on top of `activity:write`, a scope
+        change the consent screen will show. A Matrix ride matches a Strava
+        activity when they overlap in time, with about 2 minutes of slack. Then
+        each ride is one of:
+        - already ours (named by `workoutTitle`, no device): skip;
+        - covered by an Apple Watch ride: upload, then list the watch copy;
+        - on Strava with nothing: upload.
+      - **Expect many-to-one and none-to-one.** One watch ride can cover several
+        Matrix rides when the console split a session (16 Oct, 21 Sep 2026). There
+        are watch rides with no Matrix ride: Apple Fitness+ Cycling, hour-long rides
+        in early August. Leave those alone. Weight training overlapping a ride is
+        not a duplicate; only `Ride` activities count.
+      - **Weak heart rate keeps the watch copy.** Where under 60 % of the Matrix
+        samples survive `flagHeartRateDropouts`, the watch's trace is the better
+        record. Default to not uploading those days and keeping the watch ride (4
+        of 50 days on 28 Oct: 22 Oct, 20 Oct, 10 Sep, 19 Aug).
+      - **Skip rides under 5 minutes by default.** They are aborted starts, some
+        with 1–2 samples.
+      - **The UI.** A "Send history to Strava" panel offers the matched list with
+        checkboxes, short and weak-heart-rate rides unticked. Then it shows progress,
+        and at the end a review list: each upload next to its watch copy, linked.
+
+- [ ] **Strava may reject an upload as a duplicate of the watch ride.** On 28 Oct
+      2026, 6 of 46 uploads of a ride with an overlapping Apple Watch copy came back
+      as "duplicate of activity <watch id>". The other 40 were accepted alongside
+      their watch copy. No rule for which was found. Deleting the watch copy and
+      uploading again worked every time, so a deleted activity no longer blocks.
+      The single-ride button already tells the two apart: it reads the named
+      activity's `external_id` and calls another app's copy a conflict (see
+      AGENTS.md). What is left for the batch: delete-then-retry cannot be automated
+      (no delete in the API), so a conflict goes on the review list. The rider
+      deletes the watch copy there and the batch retries those rides.
+
+- [ ] **Deleting the watch copies stays with the rider.** The Strava API has no
+      delete endpoint. On 28 Oct they were deleted through the logged-in web session:
+      the activity page's form, after checking the page's device line reads "Apple
+      Watch…". That is not the API, breaks whenever Strava changes its site, and is
+      outside its API terms. Fine once, under supervision; not something to ship. The
+      batch lists the watch copies with links instead. `hide_from_home` (allowed by
+      `activity:write`) could mute them meanwhile, off by default.
+
+- [ ] **Pace by Strava's own counters, and make the run resumable.** Uploading 61
+      rides took about 2.5 minutes. Each ride is one upload plus 1–2 status polls, so
+      a full history fits in the default 200 requests per 15 minutes and 2,000 per
+      day. Still read `x-ratelimit-usage` and `x-ratelimit-limit` on every response,
+      and wait for the next quarter hour when close or on a 429. Keep a per-ride
+      result for the run (done, activity id, error), so an interrupted run can
+      continue.

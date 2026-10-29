@@ -5,6 +5,8 @@ import {
   type HistoryResult,
   type ReadableStorage,
 } from "matrix-workouts-core";
+import type { ApiFetchReply } from "../background/message.js";
+import { askWorker } from "./worker.js";
 
 /**
  * `FetchLike` implemented over extension messaging, so `fetchWorkoutHistory` is the
@@ -20,13 +22,12 @@ const viaServiceWorker: FetchLike = async (url, init) => {
     throw new Error(`The background worker only makes GET requests, not ${init.method}.`);
   }
 
-  const reply = (await chrome.runtime.sendMessage({
+  const reply = await askWorker<ApiFetchReply>({
     type: "apiFetch",
     url,
     headers: init.headers,
-  })) as { ok: boolean; status: number; body: unknown; error?: string } | undefined;
+  });
 
-  if (!reply) throw new Error("The extension's background worker did not respond.");
   if (!reply.ok && reply.status === 0) throw new Error(reply.error ?? "Network request failed.");
 
   return { ok: reply.ok, status: reply.status, json: async () => reply.body };

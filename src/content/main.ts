@@ -8,12 +8,13 @@ import {
   type Workout,
   ApiError,
 } from "matrix-workouts-core";
-import { renderDashboard } from "../ui/dashboard.js";
+import { renderDashboard, topBar } from "../ui/dashboard.js";
 import { machineLabel } from "../ui/format.js";
 import { el } from "../ui/svg.js";
 import { loadHistory } from "./history.js";
 import { createSurface, type Surface } from "./mount.js";
 import { observeLocation, workoutIdFromPath } from "./route.js";
+import { sendToStrava } from "./strava.js";
 
 /**
  * Content script entry point.
@@ -60,17 +61,15 @@ function showStock(): void {
  * rather than cardio amber: there is no workout behind it to colour it by.
  */
 function shell(title: string, children: (Node | string)[]): HTMLElement {
-  const back = el("button", { type: "button", class: "back", text: "Show stock page" });
-  back.addEventListener("click", showStock);
   return el("div", { class: "wrap" }, [
-    el("div", { class: "topbar" }, [
-      back,
-      el("div", { class: "date", text: "Full telemetry" }),
-      el("div", { class: "ident", text: "Full Matrix Workouts" }),
-    ]),
+    topBar(showStock, "Full telemetry"),
     el("h1", { class: "band alert", text: title }),
     el("div", { class: "page" }, children),
   ]);
+}
+
+function dashboard(workout: Workout): HTMLElement {
+  return renderDashboard(workout, { onShowStock: showStock, sendToStrava: () => sendToStrava(workout) });
 }
 
 function problem(title: string, message: string, action?: HTMLElement): HTMLElement {
@@ -117,7 +116,7 @@ function offerHistory(view: Surface, id: string): void {
         const workout = findWorkout(history, id);
         if (workout) {
           if (!isSupportedMachine(workout.machineType)) return outOfScope(view, workout.machineType);
-          view.render(renderDashboard(workout, { onShowStock: showStock }));
+          view.render(dashboard(workout));
           renderedId = id;
           return;
         }
@@ -163,7 +162,7 @@ function renderWorkout(view: Surface, id: string): void {
     if (workout && !isSupportedMachine(workout.machineType)) {
       outOfScope(view, workout.machineType);
     } else if (workout) {
-      view.render(renderDashboard(workout, { onShowStock: showStock }));
+      view.render(dashboard(workout));
       renderedId = id;
     } else {
       offerHistory(view, id);

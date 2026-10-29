@@ -1,41 +1,26 @@
 import { API_ORIGIN } from "matrix-workouts-core";
+import { chromeStrava } from "./chromeStrava.js";
+import { isApiFetch, type ApiFetchMessage, type ApiFetchReply } from "./message.js";
+import { isUploadMessage, uploadRide } from "./strava.js";
 
 /**
- * Service worker. Its only job is to make the one cross-origin request the content
- * script cannot.
+ * Service worker. It makes the cross-origin requests the content script cannot, and
+ * it owns the one thing the extension keeps.
  *
  * Content-script `fetch` is subject to CORS as the *page's* origin, regardless of
  * `host_permissions` — so a call from `matrixworkouts.jfit.co` to `apollo.jfit.co`
  * is at the mercy of headers we do not control. A request from the service worker
  * runs with the extension's host permissions instead and is not.
  *
- * This worker is deliberately dumb: it forwards one request to one allowed origin
- * and returns the body. It does not parse, cache, store, or log anything — the
- * Authorization header passes through in memory and is gone when the response is.
+ * Two jobs, kept apart:
+ *
+ * - **The workout API: a dumb forwarder.** One GET to one allowed origin, the body
+ *   returned. Nothing parsed, cached, stored or logged — the jfit Authorization
+ *   header passes through in memory and is gone when the response is.
+ * - **Strava: the upload** (`strava.ts`). Sign-in, upload and polling run here so
+ *   the tokens, the one thing stored, never reach a content script. The options
+ *   page, which is the extension's own, calls the same module directly.
  */
-
-interface ApiFetchMessage {
-  type: "apiFetch";
-  url: string;
-  headers: Record<string, string>;
-}
-
-interface ApiFetchReply {
-  ok: boolean;
-  status: number;
-  body: unknown;
-  /** Set only on a transport failure, and never contains request headers. */
-  error?: string;
-}
-
-function isApiFetch(message: unknown): message is ApiFetchMessage {
-  return (
-    typeof message === "object" &&
-    message !== null &&
-    (message as ApiFetchMessage).type === "apiFetch" &&
-    typeof (message as ApiFetchMessage).url === "string"
-  );
-}
 
 async function forward(message: ApiFetchMessage): Promise<ApiFetchReply> {
   // Hard allowlist. The url arrives from a content script, and a content script
@@ -66,10 +51,15 @@ async function forward(message: ApiFetchMessage): Promise<ApiFetchReply> {
   }
 }
 
+/**
+ * The two requests a content script can make. Each returns `true` to keep the channel
+ * open for its async reply, and always replies: the sender is awaiting it.
+ */
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (!isApiFetch(message)) return false;
-  forward(message).then(sendResponse);
-  return true; // keep the channel open for the async reply
+  if (isApiFetch(message)) forward(message).then(sendResponse);
+  else if (isUploadMessage(message)) uploadRide(chromeStrava, message).then(sendResponse);
+  else return false;
+  return true;
 });
 
 /**

@@ -10,6 +10,7 @@ import {
   niceDomain,
   planWorkout,
   workoutExportJson,
+  workoutTitle,
   type LinearScale,
   type PanelGeometry,
   type Workout,
@@ -23,7 +24,29 @@ import { el, svg } from "./svg.js";
 export interface DashboardOptions {
   /** Hide our sheet and hand the page back to the site. */
   onShowStock: () => void;
+  /** Upload this ride to the rider's Strava. Without it there is no Strava button. */
+  sendToStrava?: () => Promise<StravaOutcome>;
 }
+
+/**
+ * How an upload ended, in the terms the button speaks. `setup` means there is no
+ * Strava app to sign in with yet, `cancelled` that the rider did not connect, and
+ * `processing` that Strava took the file but had not finished with it in time.
+ * `duplicate` is this ride, already uploaded; `conflict` is another app's copy of it
+ * (an Apple Watch ride, say) that Strava refused this one for. Either way the
+ * activity's address comes with it, so the view knows nothing about Strava's URLs.
+ */
+export type StravaOutcome =
+  | { kind: "uploaded" | "duplicate" | "conflict"; activityUrl: string }
+  | { kind: "setup" | "cancelled" | "processing" | "failed" };
+
+/** What the button says, visibly and aloud, when an upload did not end on Strava. */
+const STRAVA_TROUBLE: Record<Exclude<StravaOutcome, { activityUrl: string }>["kind"], readonly [string, string]> = {
+  setup: ["Set up Strava first", "Strava is not set up. The extension's options page has opened."],
+  cancelled: ["Not connected", "Strava was not connected"],
+  processing: ["Still processing", "Strava is still processing the ride"],
+  failed: ["Upload failed", "Upload failed"],
+};
 
 /** Build the whole replacement view for one workout. */
 export function renderDashboard(workout: Workout, options: DashboardOptions): HTMLElement {
@@ -51,32 +74,38 @@ export function renderDashboard(workout: Workout, options: DashboardOptions): HT
   if (panels.length) page.append(tableSection(workout, panels));
   page.append(footer(workout, plan.control, hr));
 
-  return el("div", { class: "wrap" }, [topBar(workout, options), band(workout), page]);
+  const actions = [
+    ...(options.sendToStrava ? [stravaButton(workout, options.sendToStrava)] : []),
+    shareMenu(workout),
+    exportButton(workout),
+  ];
+  return el("div", { class: "wrap" }, [
+    topBar(options.onShowStock, longDate(workout.startedAt), actions),
+    band(workout),
+    page,
+  ]);
 }
 
 /* ---------------------------------------------------------------- top bar */
 
 /**
  * The stock detail page's black header, slot for slot: a back control on the left,
- * the date in the middle, and the spacer on the right — which is where we sign the
- * view, since the user needs to know whose page this is, and where the export
- * action sits, because it acts on the whole page rather than on any one panel.
+ * the date (or what stands in for one) in the middle, and the spacer on the right —
+ * which is where we sign the view, since the user needs to know whose page this is,
+ * and where page-wide actions sit, because they act on the whole page rather than
+ * on any one panel. Every view wears this one bar, with or without actions.
  *
  * The back button stays first in the DOM. It is the control a user reaches for to
  * get out, and tab order should hand it to them before four charts' worth of
  * scrubbing.
  */
-function topBar(workout: Workout, options: DashboardOptions): HTMLElement {
+export function topBar(onShowStock: () => void, title: string, actions: Node[] = []): HTMLElement {
   const stock = el("button", { type: "button", class: "back", text: "Show stock page" });
-  stock.addEventListener("click", options.onShowStock);
+  stock.addEventListener("click", onShowStock);
   return el("div", { class: "topbar" }, [
     stock,
-    el("div", { class: "date", text: longDate(workout.startedAt) }),
-    el("div", { class: "actions" }, [
-      shareMenu(workout),
-      exportButton(workout),
-      el("div", { class: "ident", text: "Full Matrix Workouts" }),
-    ]),
+    el("div", { class: "date", text: title }),
+    el("div", { class: "actions" }, [...actions, el("div", { class: "ident", text: "Full Matrix Workouts" })]),
   ]);
 }
 
@@ -106,27 +135,22 @@ function shareMenu(workout: Workout): HTMLElement {
     { "aria-haspopup": "menu", "aria-expanded": "false", "aria-controls": "sharemenu" },
   );
   const button = action.button;
-  // One render at a time: each is a 1080-wide canvas and a download, and a second
-  // click while the first is running would save the picture twice.
-  let rendering = false;
 
   const items = SHARE_FORMATS.map(({ format, text }) => {
     const item = el("button", { type: "button", role: "menuitem", text });
-    item.addEventListener("click", async () => {
+    item.addEventListener("click", () => {
       close();
       button.focus();
-      if (rendering) return;
-      rendering = true;
-      action.say("Rendering…", "Rendering the image");
-      try {
-        downloadBlob(shareFilename(workout, format), await shareCardPng(workout, format));
-        action.flash("Saved", "Image saved");
-      } catch {
-        // Deliberately without the error, like the export: say enough, quote nothing.
-        action.flash("Image failed", "Image failed");
-      } finally {
-        rendering = false;
-      }
+      // One render at a time: each is a 1080-wide canvas and a download.
+      void action.run(["Rendering…", "Rendering the image"], async () => {
+        try {
+          downloadBlob(shareFilename(workout, format), await shareCardPng(workout, format));
+          action.flash("Saved", "Image saved");
+        } catch {
+          // Deliberately without the error, like the export: say enough, quote nothing.
+          action.flash("Image failed", "Image failed");
+        }
+      });
     });
     return item;
   });
@@ -198,6 +222,64 @@ function exportButton(workout: Workout): HTMLButtonElement {
 }
 
 /**
+ * Send the ride to the rider's own Strava account, as an indoor ride with a name.
+ *
+ * The one action in this view that uploads, so the tooltip says what goes before it
+ * is pressed: the FIT file, which carries the 10-second series and nothing that
+ * identifies the account or the machine. Once Strava has the ride, the button opens
+ * it there instead of sending it again. A ride Strava already has (the same file sent
+ * twice) counts as sent: Strava names the activity, and that is where the button goes.
+ *
+ * A conflict is different: Strava refused the ride because another app's copy is
+ * there. The button says so and its next click opens that copy, so the rider can
+ * delete it. The click after that sends again.
+ */
+function stravaButton(workout: Workout, send: () => Promise<StravaOutcome>): HTMLButtonElement {
+  const idleTitle =
+    `Upload this ride to your Strava account as an indoor ride named "${workoutTitle(workout)}". ` +
+    "Strava receives power, cadence, speed, distance and heart rate every 10 seconds.";
+  const action = barAction("upload", ["Send to Strava", "Send this ride to Strava"], idleTitle);
+  action.button.classList.add("strava");
+  let activityUrl: string | null = null;
+  let conflictUrl: string | null = null;
+
+  action.button.addEventListener("click", () => {
+    if (activityUrl) {
+      window.open(activityUrl, "_blank", "noopener");
+      return;
+    }
+    if (conflictUrl) {
+      window.open(conflictUrl, "_blank", "noopener");
+      conflictUrl = null;
+      action.button.title = idleTitle;
+      action.say("Send to Strava", "Send this ride to Strava");
+      return;
+    }
+    void action.run(["Sending…", "Sending to Strava"], async () => {
+      try {
+        const outcome = await send();
+        if (outcome.kind === "uploaded" || outcome.kind === "duplicate") {
+          activityUrl = outcome.activityUrl;
+          action.button.title = "Open this ride on Strava.";
+          action.say(outcome.kind === "uploaded" ? "On Strava" : "Already on Strava", "Open this ride on Strava");
+        } else if (outcome.kind === "conflict") {
+          conflictUrl = outcome.activityUrl;
+          action.button.title =
+            "Strava already has another copy of this ride, from another app or device, and refused this one. " +
+            "Open it, delete it on Strava, then send again.";
+          action.say("Another copy blocks it", "Strava refused this ride: another copy is there. Open it");
+        } else {
+          action.flash(...STRAVA_TROUBLE[outcome.kind]);
+        }
+      } catch {
+        action.flash(...STRAVA_TROUBLE.failed);
+      }
+    });
+  });
+  return action.button;
+}
+
+/**
  * A text-and-glyph action in the black bar that can report what it just did.
  *
  * The visible label is hidden on a narrow viewport, where there is no room for it
@@ -207,16 +289,28 @@ function exportButton(workout: Workout): HTMLButtonElement {
  * `flash` shows an outcome and returns to idle after a moment; any later `say` or
  * `flash` cancels that return, so a second click can never have its own message
  * overwritten by the first one's timer.
+ *
+ * `run` does slow work one at a time: a click while it is running does nothing, so
+ * a double click cannot save a picture twice or upload a ride twice. The work says
+ * its own outcome.
  */
+interface BarAction {
+  button: HTMLButtonElement;
+  say(visible: string, spoken: string): void;
+  flash(visible: string, spoken: string): void;
+  run(busy: readonly [string, string], work: () => Promise<void>): Promise<void>;
+}
+
 function barAction(
   glyph: string,
   [idleText, idleName]: readonly [string, string],
   title: string,
   attrs: Record<string, string> = {},
-): { button: HTMLButtonElement; say(visible: string, spoken: string): void; flash(visible: string, spoken: string): void } {
+): BarAction {
   const label = el("span", { class: "label" });
   const button = el("button", { type: "button", class: "baraction", title, ...attrs }, [icon(glyph), label]);
   let reset: ReturnType<typeof setTimeout> | undefined;
+  let running = false;
   const say = (visible: string, spoken: string) => {
     clearTimeout(reset);
     label.textContent = visible;
@@ -229,6 +323,16 @@ function barAction(
     flash(visible, spoken) {
       say(visible, spoken);
       reset = setTimeout(() => say(idleText, idleName), 2500);
+    },
+    async run(busy, work) {
+      if (running) return;
+      running = true;
+      say(...busy);
+      try {
+        await work();
+      } finally {
+        running = false;
+      }
     },
   };
 }

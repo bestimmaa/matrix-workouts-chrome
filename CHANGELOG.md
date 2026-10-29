@@ -8,6 +8,16 @@ The version history source of truth is git tags in the format `vMAJOR.MINOR.PATC
 
 ### Added
 
+- **Send to Strava** in the view's header: uploads the ride's FIT file to the
+  rider's Strava account with `trainer=1`, so it arrives as an indoor ride, and
+  with the program's title as its name. Built on `stravaUpload` from
+  `matrix-workouts-core` 0.4.0. Sign-in goes through the rider's own Strava API app,
+  entered on a new options page that also shows what is stored and clears it. The
+  manifest gains `identity`, `storage` and host access to Strava's upload, activity
+  and OAuth endpoints. It asks Strava for `activity:write` and `activity:read_all`.
+  The read is used only to tell our own earlier upload from another app's copy when
+  Strava calls a ride a duplicate. Another app's copy shows as a conflict, with a
+  link to delete it.
 - **Share image** in the view's header: save the ride as a PNG to post, as a 9:16
   story or a 4:5 feed post. The card comes from `matrix-workouts-core` 0.3.0's
   `share/`; the extension rasterizes it locally and downloads it. Nothing is uploaded.

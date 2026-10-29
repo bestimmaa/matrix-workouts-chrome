@@ -20,7 +20,9 @@ g.window = dom.window;
 const { toWorkout } = await import("matrix-workouts-core");
 const { renderDashboard } = await import("../src/ui/dashboard.js");
 
-const styles = readFileSync(resolve(process.cwd(), "src/ui/styles.css"), "utf8");
+const styles = ["tokens.css", "styles.css"]
+  .map((file) => readFileSync(resolve(process.cwd(), "src/ui", file), "utf8"))
+  .join("\n");
 
 const ids = process.argv.slice(2).length
   ? process.argv.slice(2)
@@ -33,22 +35,17 @@ mkdirSync(resolve(process.cwd(), "preview"), { recursive: true });
 for (const id of ids) {
   const raw = JSON.parse(readFileSync(resolve(process.cwd(), `fixtures/raw-${id}.json`), "utf8"));
   const workout = toWorkout(raw as Record<string, unknown>);
-  const view = renderDashboard(workout, { onShowStock: () => {} });
+  // The header as the extension mounts it, Strava button included. Nothing here can
+  // upload, and the button is inert in a static file anyway.
+  const view = renderDashboard(workout, { onShowStock: () => {}, sendToStrava: async () => ({ kind: "failed" }) });
 
-  // `:host` only resolves inside a shadow root; the preview is a plain document.
-  // The three theme guards must keep their structure, or the preview cannot show
-  // the light theme at all on a dark-mode machine.
-  const pageStyles = styles
-    .replace(/:host\(:not\(\[data-theme="light"\]\)\)/g, ':root:not([data-theme="light"])')
-    .replace(/:host\(\[data-theme="dark"\]\)/g, ':root[data-theme="dark"]')
-    .replace(/:host/g, ":root");
 
   const html = `<!doctype html>
 <html lang="en" data-theme="${process.env["THEME"] ?? ""}">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${workout.mode} · ${id}</title>
-<style>${pageStyles}
+<style>${styles}
   .sheet { position: static; min-height: 100vh; }
   body { margin: 0; }
 </style>

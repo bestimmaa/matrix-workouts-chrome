@@ -83,11 +83,12 @@ npm run typecheck   # tsc --noEmit
 npm run build       # both targets -> dist/
 ```
 
-`npm run build` runs **two** vite passes, because rollup takes one output format per
-build and the two entry points need different ones: the content script must be a
-plain IIFE (MV3 content scripts are not modules), while the service worker is
-declared `"type": "module"`. The second pass sets `emptyOutDir: false` so it does
-not delete the first.
+`npm run build` runs **three** vite passes, because rollup takes one output format
+per build and the entry points need different ones: the content script and the
+options page's script must be plain IIFEs (MV3 content scripts are not modules, and
+`options.html` loads a classic `<script>`), while the service worker is declared
+`"type": "module"`. The later passes set `emptyOutDir: false` so they do not delete
+the first.
 
 All three must pass before committing.
 
@@ -144,6 +145,13 @@ it out as SVG (its `share/`, designed in the 24 Oct 2026 mockups on the
 `src/ui/share.ts` only rasterizes it through a detached `<img>` and `<canvas>` and
 hands the PNG to the same download route as the export.
 
+Also built: **Send to Strava**, the one action that uploads. The header's button
+sends the ride's FIT file to the rider's own Strava account, marked indoor and
+named. Core decides what the upload says (`stravaUpload`). The service worker signs
+in, uploads and waits for Strava to finish (`src/background/strava.ts`), and
+`src/options/` is where the rider's Strava app is entered. See "Strava" under
+Privacy.
+
 Not built: anything that uses history in aggregate (trends across rides, a power
 curve, sprint-to-sprint comparison). The client returns the whole list; only the one
 requested workout is currently rendered from it. `npx matrix-workouts-history` puts
@@ -182,7 +190,8 @@ src/
     ui/          layout, readout console, stat tiles, icons, table view
   extension — DOM + chrome.* + the network
     content/     content script — detects the route, reads localStorage, mounts UI
-    background/  MV3 service worker: carries the one cross-origin request
+    background/  MV3 service worker: the workout API request and the Strava upload
+    options/     the options page: the rider's Strava app, and what is stored
 scripts/       dev tooling, not shipped and not a layer (see `npm run preview`)
 fixtures/      real captured workout records — see below
 ```
@@ -199,7 +208,8 @@ Decisions taken up front (revisit deliberately, don't drift):
   argument for it is below and is kept here because this is where it was made and
   measured; the geometry it describes is core's.
 - **One dependency, and it is ours.** `matrix-workouts-core` has no dependencies of
-  its own, so the bundle is still one IIFE that makes no network request of any kind.
+  its own, so the content bundle is still one IIFE that makes no network request of
+  any kind: the requests are the service worker's.
   `src/layers.test.ts` holds an allowlist rather than a yes/no, so a second package
   cannot arrive without someone deciding it should.
 - **The core stays pure and platform-free** so it is unit-testable against fixtures
@@ -266,8 +276,8 @@ Decisions taken up front (revisit deliberately, don't drift):
   `styles.css`, never registered on the page, never fetched. `vite.config.ts` forces
   `.woff2` inline, because Vite's 4 KB default emitted Instrument Sans as a file —
   which a content script would have requested *from the site*. After a build,
-  `dist/` holds exactly `content.js`, `background.js` and `manifest.json`; a font file
-  there is that bug back.
+  `dist/` holds exactly `content.js`, `background.js`, `options.js`, `options.html`
+  and `manifest.json`; a font file there is that bug back.
 
 
 ### The layering, and why part of it left
@@ -539,7 +549,8 @@ looks: the chrome, the type and the colour now come from the platform itself —
 This handles personal health data.
 
 - **No telemetry, no analytics, no external requests** other than to `jfit.co`
-  hosts the user is already logged into.
+  hosts the user is already logged into, and to Strava when the rider presses
+  *Send to Strava*. "Strava" below says what that one exception allows.
 - Never log or persist the bearer token, email, or profile fields. `redact()` in
   the core package exists because a transport error's message can contain the
   request; every error that escapes the client passes through it, and a test asserts
@@ -547,16 +558,18 @@ This handles personal health data.
   real token, and none ever should.**
 - Fetched history lives in a module variable for the life of the tab and is never
   written to `chrome.storage`. It is health data and it is one request away.
-- `host_permissions` is exactly `https://apollo.jfit.co/*` — nothing else, and no
-  `<all_urls>`. The toolbar action uses **`activeTab`**, not a host permission for
+- `host_permissions` is exactly `https://apollo.jfit.co/*` plus Strava's upload,
+  activity and OAuth paths — nothing else, and no `<all_urls>`. The Strava grant names the
+  paths, not the host, so no other Strava API is reachable. The toolbar action uses **`activeTab`**, not a host permission for
   the site: it grants access only to the tab the user just clicked, only while they
   are on it. Do not trade it for a broader grant to save a line of code. The content script reaches `matrixworkouts.jfit.co` through its
   `matches` pattern, which needs no host permission. `orion.jfit.co` answers 403 and
   must not be added.
 - No remote code. MV3 forbids it and so do we.
 - Anything written to `chrome.storage` must be user-visible and clearable.
-- **The JSON export is a local download and must stay one.** No upload, no service,
-  no "share" anything. The button's tooltip says so before it is pressed, and a
+- **The JSON export is a local download and must stay one.** It carries the
+  upstream record verbatim, ids and all, and it is never what goes to Strava. The
+  button's tooltip says nothing is uploaded before it is pressed, and a
   failure path must never report an error string that could quote the record it was
   writing — that string is the user's heart rate.
 - **The share image is a local download too — the rider does the sharing.** It is
@@ -565,6 +578,68 @@ This handles personal health data.
   numbers, never the 10-second series, the account or the machine id. Same
   download route, same tooltip promise, same silent failure. No share target, no
   upload, no `navigator.share`.
+
+### Strava
+
+**Decided 26 Oct 2026: the extension uploads to Strava, and only there.** Until then
+this section said "no upload, no service", and the rider moved the line on purpose.
+A file uploaded by hand arrives as an outdoor ride with no name, because Strava
+reads indoor only from the upload request's `trainer` flag (measured; see core's
+AGENTS.md, "The FIT file"). Getting that right needs the API, and so a request to
+someone other than jfit.co. What keeps the exception narrow:
+
+- **Only on a press, only the FIT file.** Nothing is sent when a ride is opened. The
+  file carries the 10-second series and no workout id, machine id or account, and
+  the request names it by its start time for the same reason. The button's tooltip
+  says what goes before it is pressed.
+- **The rider's own Strava app.** Strava has no sign-in without a client secret, and
+  a new app only lets its owner connect, so there is nothing this extension could
+  ship with. The id and secret are typed into the options page and stored in
+  `chrome.storage.local`. They are never in the repo, which is public.
+- **Tokens never reach a content script.** It sends the file to the service worker
+  and gets back how the upload ended (`StravaOutcome`), never a token: it shares a
+  page with code we do not control. The options page is the extension's own, so it
+  calls `strava.ts` directly to save the app and disconnect. That module is the only
+  code that reads or writes the Strava storage. The athlete profile in Strava's
+  token response is dropped.
+- **Asks for `activity:write` and `activity:read_all`, and reads one activity.**
+  Write covers the upload and its status. Read is used for one request only: the
+  activity a "duplicate" names, to see whether it is ours (below). It is
+  `read_all` because a rider whose default is "Only You" has nothing
+  `activity:read` can see. Unticking either on the consent page counts as declining.
+- **Visible and clearable.** The options page shows whether Strava is connected,
+  and *Disconnect and forget* revokes the token on Strava's side and removes
+  everything the extension stored for it.
+- **A failure quotes nothing.** Strava's error text stays in the worker. The button
+  says "Upload failed", "Not connected" or "Set up Strava first" in its own words.
+
+**Measured 28 Oct 2026: the button does what the file could not.** Two target-watts
+rides (26 and 28 Oct) sent through it arrived as `Ride` with `trainer: true`, named
+by `workoutTitle`. Strava's streams matched the record on every figure compared:
+192 and 271 points, power, cadence and heart rate averages within 1, and time and
+distance equal to the series' end (1910 s / 16,109.5 m, 2700 s / 21,887 m). Where the
+console's summary says more (32:02 / 16.21 km on the 26 Oct ride), Strava shows the
+series. That is core's "the track is the series" rule, not a loss in the upload.
+
+**The watch ride is a duplicate, and the API cannot fix that.** The rider's watch
+already sends each ride to Strava. Usually Strava takes our upload beside it, but
+not always: on 28 Oct 2026, 6 of 46 uploads were refused as a "duplicate of" the
+overlapping Apple Watch activity, with no rule found for which. The API has no
+endpoint for deleting an activity, so which copy stays is the rider's call, made on
+Strava. Deleting the watch copy and sending again worked every time.
+
+**So a "duplicate" is checked, not trusted.** Strava says "duplicate of activity N"
+both for our own file sent twice and for another app's copy. The worker reads
+activity N: an `external_id` starting with this upload's (`matrix-workout-…Z.fit`)
+is ours, and the button says "Already on Strava". Anything else (the watch's is
+`stripped_<uuid>.fit`) is a conflict: the button says another copy blocks it and
+links to that copy, and the next click sends again.
+
+**The extension id is part of the setup.** `chrome.identity` redirects to
+`<extension-id>.chromiumapp.org`, and the Strava app's callback domain must match
+it. An unpacked extension's id comes from the folder it was loaded from, so moving
+`dist/` breaks Strava sign-in as well as the registration. The options page prints
+the domain.
 
 ---
 

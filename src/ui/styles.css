@@ -27,82 +27,10 @@
  *  - **The chrome is brand-constant; the content plane is themed.** The black bar
  *    and the cardio band look the same in both themes, exactly as they do on the
  *    stock page. Only the plane, surfaces, ink and rules flip, and every one of
- *    them is defined on bare :host first so no colour is ever defined only inside
- *    a media block.
+ *    them is defined unconditionally first so no colour is ever defined only
+ *    inside a media block. The tokens themselves are in tokens.css.
  */
 
-:host {
-  color-scheme: light;
-
-  /* -- brand chrome: identical in both themes, as on the stock page -- */
-  --brand: #e1261c;
-  --brand-hover: #870000;
-  --machine: #ffa400;
-  --bar: #000000;
-  --bar-ink: #e6e6e6;
-
-  /* -- the plot ground is the site's own graph container, dark in both themes -- */
-  --plot: linear-gradient(135.28deg, #282828 0%, #333333 100%);
-  --plot-ink: #afb4b8;
-  --plot-ink-2: #ffffff;
-  --plot-grid: rgba(255, 255, 255, 0.1);
-  --plot-rule: rgba(255, 255, 255, 0.16);
-
-  /*
-   * Series slots. One set, not two: every mark this project draws sits on the dark
-   * plot ground above, in both themes, so there is no light-ground variant to keep
-   * in step. These are the dark-ground values of the validated colorblind-safe set
-   * — power, resistance, cadence, heart rate, in that fixed order. The site's own
-   * channel colours (greenSpeed #3f9c47 against redHeartRate #db3547) are a
-   * red/green pair and were deliberately not adopted.
-   */
-  --s1: #3987e5;
-  --s2: #d95926;
-  --s3: #199e70;
-  --s4: #d68cb5;
-
-  /* -- themed plane -- */
-  --plane: #f5f5f5;
-  --surface: #ffffff;
-  --ink: #191919;
-  --ink-2: #4c4c4c;
-  --ink-3: #666666;
-  --rule: #dde0e2;
-  --grid: #dde0e2;
-  --shadow: rgba(0, 0, 0, 0.22);
-
-  --sans: Industry, Rajdhani, "Helvetica Neue", Arial, sans-serif;
-  /* The app's own secondary face, used exactly where it uses it: metric labels. */
-  --alt: Arial, Helvetica, sans-serif;
-  /* Live numerals only — see the note on .read .v. */
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :host(:not([data-theme="light"])) {
-    color-scheme: dark;
-    --plane: #191919;
-    --surface: #2d2d2d;
-    --ink: #ffffff;
-    --ink-2: #c2c6c9;
-    --ink-3: #999999;
-    --rule: #4c4c4c;
-    --grid: #4c4c4c;
-    --shadow: rgba(0, 0, 0, 0.55);
-  }
-}
-
-:host([data-theme="dark"]) {
-  color-scheme: dark;
-  --plane: #191919;
-  --surface: #2d2d2d;
-  --ink: #ffffff;
-  --ink-2: #c2c6c9;
-  --ink-3: #999999;
-  --rule: #4c4c4c;
-  --grid: #4c4c4c;
-  --shadow: rgba(0, 0, 0, 0.55);
-}
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -153,10 +81,12 @@
   color: var(--bar-ink);
   height: 44px;
   display: grid;
-  /* `minmax(0, ...)` on every track, not the default `minmax(auto, ...)`: all three
-     slots hold nowrap text, whose min-content width is the whole string, so without
-     this the bar cannot shrink and the slots overlap instead. */
-  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
+  /* The date is centred while both sides fit in their halves. The outer tracks
+     never go below their content, so when the controls need more than half (three
+     labelled actions, or a long "Already on Strava") that side takes it and the date
+     moves over rather than being drawn over. The date's own track can shrink to
+     nothing and ellipsise. Below 820px the labels go; see the media query. */
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr);
   align-items: center;
   gap: 12px;
   padding: 0 14px;
@@ -175,7 +105,8 @@
    They are grouped so the grid still sees one cell, and so the narrow-viewport rule
    can drop the label while keeping the control — see the media query at the end. */
 .topbar .actions {
-  justify-self: end;
+  justify-self: stretch;
+  justify-content: flex-end;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -232,7 +163,15 @@
 }
 .sharemenu button:hover,
 .sharemenu button:focus-visible { background: #191919; color: var(--machine); outline: none; }
+/* The signature takes only the room left over: zero width of its own, so the outer
+   track's max-content never counts it and it never pushes the date aside. It grows
+   back to its natural width when there is room, and ellipsises or vanishes before
+   anything else does. */
 .topbar .ident {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  max-width: max-content;
   font-family: var(--alt);
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -547,12 +486,7 @@ footer code { font-family: var(--mono); }
      on the button, so hiding the text costs nothing but the width. */
   .topbar .ident { display: none; }
   .baraction .label { display: none; }
-  /* The wide bar centres the date on the page, which means the two outer tracks
-     split the leftover space evenly — so the long back label overflows its half and
-     lands on top of the date long before the bar is actually full. Narrow, the
-     controls take the width they need and the date takes what is left, centred in
-     it and ellipsised if it has to be. */
-  .topbar { gap: 8px; grid-template-columns: auto minmax(0, 1fr) auto; }
+  .topbar { gap: 8px; }
   /* Two points off the date buys back the width the ellipsis would otherwise eat.
      The date is the only figure this bar carries, and a figure is not something a
      narrow viewport gets to truncate. */

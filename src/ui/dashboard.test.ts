@@ -8,7 +8,7 @@ import {
   toWorkout,
   type Workout,
 } from "matrix-workouts-core";
-import { renderDashboard } from "./dashboard.js";
+import { renderDashboard, type StravaOutcome } from "./dashboard.js";
 import { shareCardPng, shareCardSvg, shareFilename } from "./share.js";
 
 /*
@@ -283,6 +283,79 @@ describe("renderDashboard", () => {
     });
     root.querySelector<HTMLButtonElement>("button")!.click();
     expect(asked).toBe(true);
+  });
+
+  describe("send to strava", () => {
+    const RIDE = "6aa045668d2b6d09c612785d";
+    const ACTIVITY = "https://www.strava.com/activities/42";
+    const withStrava = (send: () => Promise<StravaOutcome>) =>
+      renderDashboard(fixture(RIDE), { onShowStock: () => {}, sendToStrava: send });
+    const stravaControl = (root: HTMLElement) => root.querySelector<HTMLButtonElement>(".topbar .strava");
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it("is offered only where something can make the upload", () => {
+      expect(stravaControl(render(RIDE))).toBeNull();
+      const button = stravaControl(withStrava(async () => ({ kind: "failed" })))!;
+      expect(button.textContent).toContain("Send to Strava");
+      // The one action that uploads says so, and says what goes, before it is pressed.
+      expect(button.title).toMatch(/upload/i);
+      expect(button.title).toMatch(/heart rate/);
+      expect(button.title).toContain("Target heart rate · 45 min @ 142 bpm");
+    });
+
+    it.each([
+      ["uploaded", "On Strava"],
+      ["duplicate", "Already on Strava"],
+    ] as const)("on %s says %s, then opens the ride instead of sending again", async (kind, label) => {
+      const send = vi.fn(async (): Promise<StravaOutcome> => ({ kind, activityUrl: ACTIVITY }));
+      const open = vi.spyOn(window, "open").mockImplementation(() => null);
+      const button = stravaControl(withStrava(send))!;
+      button.click();
+      expect(button.textContent).toContain("Sending");
+      await settle();
+      expect(button.textContent).toContain(label);
+
+      button.click();
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(open).toHaveBeenCalledWith(ACTIVITY, "_blank", "noopener");
+      open.mockRestore();
+    });
+
+    it("on a conflict links to the other copy once, then sends again", async () => {
+      const OTHER = "https://www.strava.com/activities/7";
+      const send = vi
+        .fn<() => Promise<StravaOutcome>>()
+        .mockResolvedValueOnce({ kind: "conflict", activityUrl: OTHER })
+        .mockResolvedValueOnce({ kind: "uploaded", activityUrl: ACTIVITY });
+      const open = vi.spyOn(window, "open").mockImplementation(() => null);
+      const button = stravaControl(withStrava(send))!;
+      button.click();
+      await settle();
+      expect(button.textContent).toContain("Another copy blocks it");
+      expect(button.title).toMatch(/delete it on Strava/);
+
+      button.click(); // opens the copy to delete
+      expect(open).toHaveBeenCalledWith(OTHER, "_blank", "noopener");
+      expect(button.textContent).toContain("Send to Strava");
+
+      button.click(); // and sends again
+      await settle();
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(button.textContent).toContain("On Strava");
+      open.mockRestore();
+    });
+
+    it("says what went wrong in its own words, and stays ready to try again", async () => {
+      let outcome: "cancelled" | "failed" = "cancelled";
+      const button = stravaControl(withStrava(async () => ({ kind: outcome })))!;
+      button.click();
+      await settle();
+      expect(button.textContent).toContain("Not connected");
+      outcome = "failed";
+      button.click();
+      await settle();
+      expect(button.textContent).toContain("Upload failed");
+    });
   });
 
   describe("share image", () => {
