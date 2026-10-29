@@ -6,13 +6,7 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   attrs: Record<string, string> = {},
   children: (Node | string)[] = [],
 ): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (key === "text") node.textContent = value;
-    else node.setAttribute(key, value);
-  }
-  node.append(...children);
-  return node;
+  return fill(document.createElement(tag), attrs, children);
 }
 
 export function svg(
@@ -20,7 +14,11 @@ export function svg(
   attrs: Record<string, string> = {},
   children: (Node | string)[] = [],
 ): SVGElement {
-  const node = document.createElementNS(SVG_NS, tag);
+  return fill(document.createElementNS(SVG_NS, tag), attrs, children);
+}
+
+/** `text` sets the text content; every other key is an attribute. */
+function fill<T extends Element>(node: T, attrs: Record<string, string>, children: (Node | string)[]): T {
   for (const [key, value] of Object.entries(attrs)) {
     if (key === "text") node.textContent = value;
     else node.setAttribute(key, value);

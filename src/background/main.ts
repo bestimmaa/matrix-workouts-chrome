@@ -34,12 +34,7 @@ async function forward(message: ApiFetchMessage): Promise<ApiFetchReply> {
       headers: message.headers,
       credentials: "omit",
     });
-    let body: unknown = null;
-    try {
-      body = await response.json();
-    } catch {
-      body = null;
-    }
+    const body: unknown = await response.json().catch(() => null);
     return { ok: response.ok, status: response.status, body };
   } catch (error) {
     return {

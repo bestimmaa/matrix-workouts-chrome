@@ -1,4 +1,5 @@
 import {
+  ApiError,
   cachedMachineType,
   findWorkout,
   isSupportedMachine,
@@ -6,8 +7,8 @@ import {
   PERSIST_KEY,
   WorkoutParseError,
   type Workout,
-  ApiError,
 } from "matrix-workouts-core";
+import { messageType } from "../background/message.js";
 import { renderDashboard, topBar } from "../ui/dashboard.js";
 import { machineLabel } from "../ui/format.js";
 import { el } from "../ui/svg.js";
@@ -45,6 +46,13 @@ function ensureSurface(): Surface {
   return surface;
 }
 
+/** Remove ourselves completely: no sheet and no pill. */
+function teardown(): void {
+  surface?.destroy();
+  surface = null;
+  renderedId = null;
+}
+
 /**
  * Hand the page back to the site. Reversible: the surface leaves a pill behind,
  * because the stock page shows its own error for anything outside the cached week
@@ -68,8 +76,15 @@ function shell(title: string, children: (Node | string)[]): HTMLElement {
   ]);
 }
 
-function dashboard(workout: Workout): HTMLElement {
-  return renderDashboard(workout, { onShowStock: showStock, sendToStrava: () => sendToStrava(workout) });
+/**
+ * Fill the sheet with a workout in hand: its dashboard, or why it gets none. `id` is
+ * the route's, which `findWorkout` may have matched against either of the record's
+ * two ids — so it, not `workout.id`, is what marks the sheet as rendered.
+ */
+function showWorkout(view: Surface, id: string, workout: Workout): void {
+  if (!isSupportedMachine(workout.machineType)) return outOfScope(view, workout.machineType);
+  view.render(renderDashboard(workout, { onShowStock: showStock, sendToStrava: () => sendToStrava(workout) }));
+  renderedId = id;
 }
 
 function problem(title: string, message: string, action?: HTMLElement): HTMLElement {
@@ -105,6 +120,9 @@ function outOfScope(view: Surface, machineType: string): void {
 /** The workout is not in this browser's cache; offer to go and get it. */
 function offerHistory(view: Surface, id: string): void {
   const button = el("button", { type: "button", text: "Load full history" });
+  // The rider may have moved on while the request was out, and an answer for this
+  // ride rendered then would sit on screen over a different workout's route.
+  const stillHere = () => view === surface && workoutIdFromPath(location.pathname) === id;
 
   button.addEventListener("click", () => {
     button.disabled = true;
@@ -113,13 +131,9 @@ function offerHistory(view: Surface, id: string): void {
     loadHistory(localStorage)
       .then((result) => {
         history = result.workouts;
+        if (!stillHere()) return;
         const workout = findWorkout(history, id);
-        if (workout) {
-          if (!isSupportedMachine(workout.machineType)) return outOfScope(view, workout.machineType);
-          view.render(dashboard(workout));
-          renderedId = id;
-          return;
-        }
+        if (workout) return showWorkout(view, id, workout);
         view.render(
           problem(
             "That workout is not in your history either",
@@ -131,6 +145,7 @@ function offerHistory(view: Surface, id: string): void {
         );
       })
       .catch((error: unknown) => {
+        if (!stillHere()) return;
         const message =
           error instanceof ApiError || error instanceof WorkoutParseError
             ? error.message
@@ -159,11 +174,8 @@ function renderWorkout(view: Surface, id: string): void {
     const workout =
       findWorkout(loadCachedWorkouts(localStorage), id) ?? (history ? findWorkout(history, id) : null);
 
-    if (workout && !isSupportedMachine(workout.machineType)) {
-      outOfScope(view, workout.machineType);
-    } else if (workout) {
-      view.render(dashboard(workout));
-      renderedId = id;
+    if (workout) {
+      showWorkout(view, id, workout);
     } else {
       offerHistory(view, id);
       // Not marked as rendered: the view is an offer, not the workout.
@@ -216,14 +228,9 @@ function openView(): void {
 function renderRoute(pathname: string): void {
   const id = workoutIdFromPath(pathname);
 
-  if (id === null) {
-    // Off the workout route entirely: remove ourselves completely rather than
-    // leaving a pill floating over a page this extension does not handle.
-    surface?.destroy();
-    surface = null;
-    renderedId = null;
-    return;
-  }
+  // Off the workout route entirely: remove ourselves completely rather than
+  // leaving a pill floating over a page this extension does not handle.
+  if (id === null) return teardown();
 
   // A ride on something that is not an indoor bike gets no pill, for the same reason
   // being off the workout route gets none: the pill must never float over a page this
@@ -231,12 +238,7 @@ function renderRoute(pathname: string): void {
   // the cached week — and we do not hide on a guess, so the pill stays and the check
   // runs again once the record is actually in hand.
   const machineType = cachedMachineType(localStorage.getItem(PERSIST_KEY), id);
-  if (machineType !== null && !isSupportedMachine(machineType)) {
-    surface?.destroy();
-    surface = null;
-    renderedId = null;
-    return;
-  }
+  if (machineType !== null && !isSupportedMachine(machineType)) return teardown();
 
   const view = ensureSurface();
   if (id === renderedId) return;
@@ -262,12 +264,10 @@ function toggle(): void {
 
 function start(): void {
   renderRoute(location.pathname);
-  observeLocation(({ pathname }) => renderRoute(pathname));
+  observeLocation(renderRoute);
 
   chrome.runtime.onMessage.addListener((message) => {
-    if (typeof message === "object" && message !== null && (message as { type?: string }).type === "toggleSurface") {
-      toggle();
-    }
+    if (messageType(message) === "toggleSurface") toggle();
     return false;
   });
 }

@@ -117,6 +117,7 @@ export function duplicateOf(error: string): number | null {
 }
 
 const activityUrl = (id: number): string => `${STRAVA_ORIGIN}/activities/${id}`;
+const bearer = (tokens: StravaTokens) => ({ Authorization: `Bearer ${tokens.accessToken}` });
 
 class NeedsSignIn extends Error {}
 
@@ -155,6 +156,23 @@ async function signIn(deps: StravaDeps, app: StravaApp): Promise<StravaTokens | 
   const code = codeFromRedirect(redirect);
   if (!code) return null;
   return requestTokens(deps, app, { code, grant_type: "authorization_code" });
+}
+
+/**
+ * Make a request, and on a 401 ask the rider to connect again, once, and repeat it.
+ * A 401 is a token revoked from Strava's side, or one from before a scope was asked
+ * for. Null if the rider declined; otherwise the response, and the tokens it used.
+ */
+async function authorized(
+  deps: StravaDeps,
+  app: StravaApp,
+  tokens: StravaTokens,
+  request: (tokens: StravaTokens) => Promise<Response>,
+): Promise<{ response: Response; tokens: StravaTokens } | null> {
+  const response = await request(tokens);
+  if (response.status !== 401) return { response, tokens };
+  const fresh = await signIn(deps, app);
+  return fresh ? { response: await request(fresh), tokens: fresh } : null;
 }
 
 /** A usable token: the stored one, a refreshed one, or a new sign-in when Strava refuses to refresh. */
@@ -203,9 +221,6 @@ function settled(status: UploadStatus): StravaOutcome | { collidedWith: number }
  * Only the first is "already on Strava". The activity's `external_id` tells them
  * apart: ours begins with the one this upload sent ("matrix-workout-…Z.fit"), the
  * watch's is "stripped_<uuid>.fit".
- *
- * A 401 here is a token from before read access was asked for, so the rider is
- * asked to connect again, once, as for a revoked token.
  */
 async function collision(
   deps: StravaDeps,
@@ -214,19 +229,13 @@ async function collision(
   id: number,
   message: UploadMessage,
 ): Promise<StravaOutcome> {
-  let response = await deps.fetch(`${ACTIVITIES}/${id}`, { headers: bearer(tokens) });
-  if (response.status === 401) {
-    const fresh = await signIn(deps, app);
-    if (!fresh) return { kind: "cancelled" };
-    response = await deps.fetch(`${ACTIVITIES}/${id}`, { headers: bearer(fresh) });
-  }
-  if (!response.ok) return { kind: "failed" };
-  const { external_id } = (await response.json()) as { external_id?: unknown };
+  const read = await authorized(deps, app, tokens, (t) => deps.fetch(`${ACTIVITIES}/${id}`, { headers: bearer(t) }));
+  if (!read) return { kind: "cancelled" };
+  if (!read.response.ok) return { kind: "failed" };
+  const { external_id } = (await read.response.json()) as { external_id?: unknown };
   const ours = typeof external_id === "string" && external_id.startsWith(message.fields.external_id);
   return { kind: ours ? "duplicate" : "conflict", activityUrl: activityUrl(id) };
 }
-
-const bearer = (tokens: StravaTokens) => ({ Authorization: `Bearer ${tokens.accessToken}` });
 
 async function post(deps: StravaDeps, tokens: StravaTokens, message: UploadMessage): Promise<Response> {
   const form = new FormData();
@@ -244,8 +253,7 @@ async function needsSetup(deps: StravaDeps): Promise<StravaOutcome> {
 /**
  * Upload one ride and wait until Strava has made an activity of it.
  *
- * A 401 means the stored token was revoked from Strava's side, so the rider is asked
- * to connect again, once. A failure never carries Strava's error text up to the
+ * A failure never carries Strava's error text up to the
  * page: the outcome says what happened, and the page shows its own words. This
  * never rejects, because the page is waiting on the answer.
  */
@@ -261,29 +269,24 @@ export async function uploadRide(deps: StravaDeps, message: UploadMessage): Prom
 }
 
 async function upload(deps: StravaDeps, app: StravaApp, message: UploadMessage): Promise<StravaOutcome> {
-  let tokens = await accessToken(deps, app);
-  if (!tokens) return { kind: "cancelled" };
-  let response = await post(deps, tokens, message);
-  if (response.status === 401) {
-    tokens = await signIn(deps, app);
-    if (!tokens) return { kind: "cancelled" };
-    response = await post(deps, tokens, message);
-  }
-  if (!response.ok) return { kind: "failed" };
+  const stored = await accessToken(deps, app);
+  if (!stored) return { kind: "cancelled" };
+  const sent = await authorized(deps, app, stored, (t) => post(deps, t, message));
+  if (!sent) return { kind: "cancelled" };
+  if (!sent.response.ok) return { kind: "failed" };
+  const { tokens } = sent;
 
-  let status = (await response.json()) as UploadStatus;
-  for (let attempt = 0; attempt <= POLL_ATTEMPTS; attempt += 1) {
+  let status = (await sent.response.json()) as UploadStatus;
+  for (let attempt = 0; ; attempt += 1) {
     const outcome = settled(status);
-    if (outcome && "collidedWith" in outcome) return collision(deps, app, tokens, outcome.collidedWith, message);
-    if (outcome) return outcome;
-    if (attempt === POLL_ATTEMPTS) break;
+    if (outcome) return "collidedWith" in outcome ? collision(deps, app, tokens, outcome.collidedWith, message) : outcome;
+    if (attempt === POLL_ATTEMPTS) return { kind: "processing" };
     if (typeof status.id !== "number") return { kind: "failed" };
     await deps.sleep(POLL_INTERVAL_MS);
     const poll = await deps.fetch(`${UPLOADS}/${status.id}`, { headers: bearer(tokens) });
     if (!poll.ok) return { kind: "failed" };
     status = (await poll.json()) as UploadStatus;
   }
-  return { kind: "processing" };
 }
 
 /** For the options page: whether Strava is connected, and if not, whether there is an app to connect with. */

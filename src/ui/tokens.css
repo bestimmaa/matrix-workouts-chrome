@@ -19,7 +19,6 @@
   /* -- the plot ground is the site's own graph container, dark in both themes -- */
   --plot: linear-gradient(135.28deg, #282828 0%, #333333 100%);
   --plot-ink: #afb4b8;
-  --plot-ink-2: #ffffff;
   --plot-grid: rgba(255, 255, 255, 0.1);
   --plot-rule: rgba(255, 255, 255, 0.16);
 
