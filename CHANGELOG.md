@@ -34,6 +34,11 @@ The version history source of truth is git tags in the format `vMAJOR.MINOR.PATC
   allowlist, so the "no dependency tree" property survives having one dependency.
 - Renamed from `full-matrix-workouts`.
 
+### Fixed
+
+- *Load full history* no longer draws the ride it fetched over a different
+  workout when the rider navigates away before the answer arrives.
+
 ### Removed
 
 - `npm run history`. It ships from the core package as `npx matrix-workouts-history`,
