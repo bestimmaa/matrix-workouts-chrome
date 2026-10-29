@@ -15,24 +15,20 @@ export function workoutIdFromPath(pathname: string): string | null {
   return match ? match[1]! : null;
 }
 
-export interface LocationWatcher {
-  stop(): void;
-}
-
-/** Call `onChange` whenever the URL changes, including same-document navigation. */
-export function observeLocation(
-  onChange: (location: { pathname: string; href: string }) => void,
-  intervalMs = 300,
-): LocationWatcher {
+/**
+ * Call `onChange` with the new pathname whenever the URL changes, including
+ * same-document navigation. Never stopped: the content script lives as long as the tab.
+ */
+export function observeLocation(onChange: (pathname: string) => void, intervalMs = 300): void {
   let last = location.href;
 
   const check = () => {
     if (location.href === last) return;
     last = location.href;
-    onChange({ pathname: location.pathname, href: location.href });
+    onChange(location.pathname);
   };
 
-  const timer = setInterval(check, intervalMs);
+  setInterval(check, intervalMs);
   window.addEventListener("popstate", check);
   window.addEventListener("hashchange", check);
 
@@ -42,14 +38,4 @@ export function observeLocation(
   const onNavigate = () => queueMicrotask(check);
   nav?.addEventListener("navigate", onNavigate);
   nav?.addEventListener("navigatesuccess", onNavigate);
-
-  return {
-    stop() {
-      clearInterval(timer);
-      window.removeEventListener("popstate", check);
-      window.removeEventListener("hashchange", check);
-      nav?.removeEventListener("navigate", onNavigate);
-      nav?.removeEventListener("navigatesuccess", onNavigate);
-    },
-  };
 }

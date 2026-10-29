@@ -63,6 +63,12 @@ export function createSurface(options: SurfaceOptions = {}): Surface {
   /** The page's own overflow, restored exactly as found. */
   let pageOverflow: string | null = null;
 
+  /** Put the host on the page, sized for what it is showing. */
+  const place = (css: string) => {
+    if (!host.isConnected) document.documentElement.append(host);
+    host.style.cssText = `all: initial; position: fixed; z-index: 2147483000; ${css}`;
+  };
+
   const surface: Surface = {
     render(content: Node) {
       sheet.replaceChildren(content);
@@ -70,9 +76,8 @@ export function createSurface(options: SurfaceOptions = {}): Surface {
     },
 
     expand() {
-      if (!host.isConnected) document.documentElement.append(host);
       // Covering the viewport, so the host must take the whole of it.
-      host.style.cssText = "all: initial; position: fixed; inset: 0; z-index: 2147483000;";
+      place("inset: 0;");
       sheet.hidden = false;
       launcher.hidden = true;
       if (!visible) {
@@ -83,14 +88,12 @@ export function createSurface(options: SurfaceOptions = {}): Surface {
     },
 
     collapse() {
-      if (!host.isConnected) document.documentElement.append(host);
       // Only the pill: anything larger would keep swallowing clicks meant for the
       // page we just handed back.
-      host.style.cssText =
-        "all: initial; position: fixed; right: 16px; bottom: 16px; z-index: 2147483000;";
+      place("right: 16px; bottom: 16px;");
       sheet.hidden = true;
       launcher.hidden = false;
-      if (visible && pageOverflow !== null) document.body.style.overflow = pageOverflow;
+      if (pageOverflow !== null) document.body.style.overflow = pageOverflow;
       pageOverflow = null;
       visible = false;
     },
@@ -101,6 +104,7 @@ export function createSurface(options: SurfaceOptions = {}): Surface {
 
     destroy() {
       if (pageOverflow !== null) document.body.style.overflow = pageOverflow;
+      pageOverflow = null;
       host.remove();
       visible = false;
     },
