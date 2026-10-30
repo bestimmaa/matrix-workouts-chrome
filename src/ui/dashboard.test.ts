@@ -8,7 +8,8 @@ import {
   toWorkout,
   type Workout,
 } from "matrix-workouts-core";
-import { renderDashboard, type StravaOutcome } from "./dashboard.js";
+import type { StravaOutcome } from "./actions.js";
+import { renderDashboard } from "./dashboard.js";
 import { shareCardPng, shareCardSvg, shareFilename } from "./share.js";
 
 /*

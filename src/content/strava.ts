@@ -1,6 +1,6 @@
 import { stravaUpload, type Workout } from "matrix-workouts-core";
 import type { UploadMessage } from "../background/strava.js";
-import type { StravaOutcome } from "../ui/dashboard.js";
+import type { StravaOutcome } from "../ui/actions.js";
 import { askWorker } from "./worker.js";
 
 /**
