@@ -54,12 +54,28 @@ function teardown(): void {
 }
 
 /**
+ * Whether a route gets a pill at all. Off the workout route it gets none, and
+ * neither does a ride on something that is not an indoor bike: the pill must never
+ * float over a page this extension does not handle. `null` from the cache means we
+ * cannot tell — the workout is outside the cached week — and we do not hide on a
+ * guess, so the pill stays and the check runs again once the record is in hand.
+ */
+function handles(id: string | null): id is string {
+  if (id === null) return false;
+  const machineType = cachedMachineType(localStorage.getItem(PERSIST_KEY), id);
+  return machineType === null || isSupportedMachine(machineType);
+}
+
+/**
  * Hand the page back to the site. Reversible: the surface leaves a pill behind,
  * because the stock page shows its own error for anything outside the cached week
- * and a one-way hide would strand the user on it.
+ * and a one-way hide would strand the user on it. Except where the route gets no
+ * pill — the toolbar icon can open the sheet anywhere — in which case handing the
+ * page back means leaving it entirely, as `renderRoute` would have.
  */
 function showStock(): void {
-  surface?.collapse();
+  if (handles(workoutIdFromPath(location.pathname))) surface?.collapse();
+  else teardown();
 }
 
 /**
@@ -68,9 +84,9 @@ function showStock(): void {
  * having something to say, not as the page having broken. The band goes brand red
  * rather than cardio amber: there is no workout behind it to colour it by.
  */
-function shell(title: string, children: (Node | string)[]): HTMLElement {
+function shell(title: string, children: (Node | string)[], onBack: () => void): HTMLElement {
   return el("div", { class: "wrap" }, [
-    topBar(showStock, "Full telemetry"),
+    topBar(onBack, "Full telemetry"),
     el("h1", { class: "band alert", text: title }),
     el("div", { class: "page" }, children),
   ]);
@@ -87,13 +103,19 @@ function showWorkout(view: Surface, id: string, workout: Workout): void {
   renderedId = id;
 }
 
-function problem(title: string, message: string, action?: HTMLElement): HTMLElement {
-  return shell(title, [
-    el("div", { class: "problem" }, [
-      el("p", { text: message }),
-      ...(action ? [action] : []),
-    ]),
-  ]);
+interface ProblemOptions {
+  /** A button under the message. */
+  action?: HTMLElement;
+  /** What *Show stock page* does; collapsing to the pill unless the page gets none. */
+  onBack?: () => void;
+}
+
+function problem(title: string, message: string, { action, onBack = showStock }: ProblemOptions = {}): HTMLElement {
+  return shell(
+    title,
+    [el("div", { class: "problem" }, [el("p", { text: message }), ...(action ? [action] : [])])],
+    onBack,
+  );
 }
 
 /**
@@ -101,7 +123,9 @@ function problem(title: string, message: string, action?: HTMLElement): HTMLElem
  *
  * Reached two ways: the toolbar icon, which works anywhere and so can land here, and
  * a workout that only turned out to be out of scope after the history fetch. The
- * pill route is already closed off in `renderRoute`.
+ * pill route is already closed off in `renderRoute` — and the second way is the one
+ * `handles` cannot see, because the type was not in the cache, so handing the page
+ * back from here removes the surface outright rather than leaving a pill.
  */
 function outOfScope(view: Surface, machineType: string): void {
   view.render(
@@ -112,6 +136,7 @@ function outOfScope(view: Surface, machineType: string): void {
         `${machineLabel(machineType).toLowerCase()} fills in different fields, so the ` +
         "same panels would be confident about channels this ride may not carry at all. " +
         "The stock page is the honest one here, and it is the one you have.",
+      { onBack: teardown },
     ),
   );
   renderedId = null;
@@ -152,7 +177,7 @@ function offerHistory(view: Surface, id: string): void {
             : "Something went wrong fetching your history.";
         const retry = el("button", { type: "button", text: "Try again" });
         retry.addEventListener("click", () => offerHistory(view, id));
-        view.render(problem("Could not load your history", message, retry));
+        view.render(problem("Could not load your history", message, { action: retry }));
       });
   });
 
@@ -163,7 +188,7 @@ function offerHistory(view: Surface, id: string): void {
         "older workouts on demand — which is why its own page shows an error for them. " +
         "It can be fetched from the workout API instead, using the sign-in this browser " +
         "already holds. Nothing is stored: the history stays in memory for this tab only.",
-      button,
+      { action: button },
     ),
   );
 }
@@ -228,17 +253,10 @@ function openView(): void {
 function renderRoute(pathname: string): void {
   const id = workoutIdFromPath(pathname);
 
-  // Off the workout route entirely: remove ourselves completely rather than
-  // leaving a pill floating over a page this extension does not handle.
-  if (id === null) return teardown();
-
-  // A ride on something that is not an indoor bike gets no pill, for the same reason
-  // being off the workout route gets none: the pill must never float over a page this
-  // extension does not handle. `null` means we cannot tell — the workout is outside
-  // the cached week — and we do not hide on a guess, so the pill stays and the check
-  // runs again once the record is actually in hand.
-  const machineType = cachedMachineType(localStorage.getItem(PERSIST_KEY), id);
-  if (machineType !== null && !isSupportedMachine(machineType)) return teardown();
+  // Off the workout route, or on a ride this extension is not built for: remove
+  // ourselves completely rather than leave a pill floating over a page we do not
+  // handle. See `handles` for why an unreadable machine type keeps the pill.
+  if (!handles(id)) return teardown();
 
   const view = ensureSurface();
   if (id === renderedId) return;

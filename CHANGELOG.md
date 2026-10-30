@@ -38,6 +38,11 @@ The version history source of truth is git tags in the format `vMAJOR.MINOR.PATC
 
 - *Load full history* no longer draws the ride it fetched over a different
   workout when the rider navigates away before the answer arrives.
+- *Show stock page* no longer leaves the pill behind on a page the extension does
+  not handle. The toolbar icon can open the sheet anywhere — off the workout route,
+  or on a treadmill ride — and closing it there used to collapse to a pill that
+  nothing would remove until the next navigation. It now removes the surface, as
+  navigating there would have.
 
 ### Removed
 
