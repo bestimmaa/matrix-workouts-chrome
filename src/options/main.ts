@@ -1,6 +1,6 @@
 import tokens from "../ui/tokens.css?inline";
 import { chromeStrava } from "../background/chromeStrava.js";
-import { connection, disconnect, saveApp, touchesConnection } from "../background/strava.js";
+import { APP_KEY, TOKENS_KEY, connection, disconnect, saveApp } from "../background/strava.js";
 
 /**
  * The options page: where the rider's own Strava app is entered, and where everything
@@ -29,10 +29,18 @@ const status = byId<HTMLElement>("status");
 
 byId<HTMLElement>("callback").textContent = new URL(chromeStrava.redirectUri).host;
 
-async function show(): Promise<void> {
+/**
+ * What is stored, on the page. The fields are refilled only when the app itself
+ * changed: the worker writes the tokens while this page may be open, and a rider
+ * halfway through typing a new secret must not have it wiped by an upload finishing
+ * in another tab.
+ */
+async function show(fields: boolean): Promise<void> {
   const { app, connected } = await connection(chromeStrava);
-  clientId.value = app?.clientId ?? "";
-  clientSecret.value = app?.clientSecret ?? "";
+  if (fields) {
+    clientId.value = app?.clientId ?? "";
+    clientSecret.value = app?.clientSecret ?? "";
+  }
   status.textContent = connected
     ? "Connected. Uploads go straight to your account."
     : app
@@ -68,7 +76,9 @@ byId<HTMLButtonElement>("disconnect").addEventListener("click", async () => {
 // connects, a revoked token disconnects. Every change here re-renders, this page's
 // own saves included.
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && touchesConnection(Object.keys(changes))) void show();
+  if (area !== "local") return;
+  if (APP_KEY in changes) void show(true);
+  else if (TOKENS_KEY in changes) void show(false);
 });
 
-void show();
+void show(true);
