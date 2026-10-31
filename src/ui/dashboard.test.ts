@@ -8,7 +8,8 @@ import {
   toWorkout,
   type Workout,
 } from "matrix-workouts-core";
-import { renderDashboard, type StravaOutcome } from "./dashboard.js";
+import type { StravaOutcome } from "./actions.js";
+import { renderDashboard } from "./dashboard.js";
 import { shareCardPng, shareCardSvg, shareFilename } from "./share.js";
 
 /*
@@ -42,6 +43,55 @@ const ALL = [
 
 function render(id: string): HTMLElement {
   return renderDashboard(fixture(id), { onShowStock: () => {} });
+}
+
+interface Downloads {
+  saved: { filename: string; text: string }[];
+  restore(): Promise<void>;
+}
+
+/**
+ * Stand in for the browser's download machinery, which jsdom does not have: a Blob
+ * that remembers its text, an object URL that is just a token, and an anchor whose
+ * click records instead of navigating. The real `downloadBlob` runs, so the filename
+ * and the bytes that would actually reach disk are what the tests assert on.
+ */
+function captureDownloads(): Downloads {
+  const BLOB_URL = "blob:stub";
+  const saved: Downloads["saved"] = [];
+  const url = window.URL as unknown as Record<string, unknown>;
+  const win = window as unknown as Record<string, unknown>;
+  const originals = { create: url["createObjectURL"], revoke: url["revokeObjectURL"], blob: win["Blob"] };
+  const originalClick = window.HTMLAnchorElement.prototype.click;
+
+  let pending = "";
+  class StubBlob {
+    constructor(readonly parts: BlobPart[]) {}
+  }
+  win["Blob"] = StubBlob;
+  url["createObjectURL"] = (blob: StubBlob) => {
+    pending = blob.parts.map(String).join("");
+    return BLOB_URL;
+  };
+  url["revokeObjectURL"] = () => {};
+  window.HTMLAnchorElement.prototype.click = function click(this: HTMLAnchorElement) {
+    if (this.getAttribute("href") !== BLOB_URL) return originalClick.call(this);
+    saved.push({ filename: this.getAttribute("download") ?? "", text: pending });
+  };
+
+  return {
+    saved,
+    // `downloadBlob` revokes on the next task, so the stubs have to outlive this
+    // tick — restoring under them leaves the timer calling into a jsdom method that
+    // does not exist.
+    async restore() {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      url["createObjectURL"] = originals.create;
+      url["revokeObjectURL"] = originals.revoke;
+      win["Blob"] = originals.blob;
+      window.HTMLAnchorElement.prototype.click = originalClick;
+    },
+  };
 }
 
 describe("format", () => {
@@ -183,59 +233,11 @@ describe("renderDashboard", () => {
    * not a label.
    */
   describe("export", () => {
-    interface Saved {
-      filename: string;
-      json: string;
-    }
-
-    const saved: Saved[] = [];
-    const BLOB_URL = "blob:stub";
-    let restore: () => void;
-
-    /*
-     * Stand in for the browser's download machinery, which jsdom does not have:
-     * a Blob that remembers its text, an object URL that is just a token, and an
-     * anchor whose click records instead of navigating. This exercises the real
-     * `downloadJson` rather than mocking it out, so the filename and the bytes that
-     * would actually reach disk are what these tests assert on.
-     */
+    let downloads: Downloads;
     beforeEach(() => {
-      saved.length = 0;
-      const url = window.URL as unknown as Record<string, unknown>;
-      const win = window as unknown as Record<string, unknown>;
-      const originals = { create: url["createObjectURL"], revoke: url["revokeObjectURL"], blob: win["Blob"] };
-      const originalClick = window.HTMLAnchorElement.prototype.click;
-
-      let pending = "";
-      class StubBlob {
-        constructor(readonly parts: BlobPart[]) {}
-      }
-      win["Blob"] = StubBlob;
-      url["createObjectURL"] = (blob: StubBlob) => {
-        pending = blob.parts.map(String).join("");
-        return BLOB_URL;
-      };
-      url["revokeObjectURL"] = () => {};
-      window.HTMLAnchorElement.prototype.click = function click(this: HTMLAnchorElement) {
-        if (this.getAttribute("href") !== BLOB_URL) return originalClick.call(this);
-        saved.push({ filename: this.getAttribute("download") ?? "", json: pending });
-      };
-
-      restore = () => {
-        url["createObjectURL"] = originals.create;
-        url["revokeObjectURL"] = originals.revoke;
-        win["Blob"] = originals.blob;
-        window.HTMLAnchorElement.prototype.click = originalClick;
-      };
+      downloads = captureDownloads();
     });
-
-    // `downloadJson` revokes on the next task, so the stubs have to outlive this
-    // tick — restoring under them leaves the timer calling into a jsdom method that
-    // does not exist.
-    afterEach(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      restore();
-    });
+    afterEach(() => downloads.restore());
 
     function exportControl(root: HTMLElement): HTMLButtonElement {
       // A direct child: the share menu's button sits inside its own wrapper.
@@ -257,10 +259,10 @@ describe("renderDashboard", () => {
       const root = renderDashboard(workout, { onShowStock: () => {} });
 
       exportControl(root).click();
-      expect(saved).toHaveLength(1);
-      expect(saved[0]!.filename).toBe(exportFilename(workout));
+      expect(downloads.saved).toHaveLength(1);
+      expect(downloads.saved[0]!.filename).toBe(exportFilename(workout));
 
-      const doc = JSON.parse(saved[0]!.json);
+      const doc = JSON.parse(downloads.saved[0]!.text);
       expect(doc.workout.id).toBe(workout.id);
       expect(doc.workout.samples).toHaveLength(workout.samples.length);
       expect(doc.workout.samples[0]).toHaveProperty("powerWatts");
@@ -393,14 +395,7 @@ describe("renderDashboard", () => {
     const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
     it("downloads the PNG under its own name and says so", async () => {
-      const saved: string[] = [];
-      const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
-        saved.push(this.download);
-      });
-      const url = window.URL as unknown as Record<string, unknown>;
-      const originals = { create: url["createObjectURL"], revoke: url["revokeObjectURL"] };
-      url["createObjectURL"] = () => "blob:stub";
-      url["revokeObjectURL"] = () => {};
+      const downloads = captureDownloads();
       vi.mocked(shareCardPng).mockResolvedValueOnce(new Blob(["png"], { type: "image/png" }));
 
       const root = render("6aa045668d2b6d09c612785d");
@@ -409,13 +404,9 @@ describe("renderDashboard", () => {
       items[1]!.click();
       expect(button.textContent).toBe("Rendering…");
       await settle();
-      expect(saved).toEqual([shareFilename(fixture("6aa045668d2b6d09c612785d"), "feed")]);
+      expect(downloads.saved.map((s) => s.filename)).toEqual([shareFilename(fixture("6aa045668d2b6d09c612785d"), "feed")]);
       expect(button.textContent).toBe("Saved");
-
-      await settle();
-      click.mockRestore();
-      url["createObjectURL"] = originals.create;
-      url["revokeObjectURL"] = originals.revoke;
+      await downloads.restore();
     });
 
     it("fails quietly when the image cannot be drawn, quoting nothing", async () => {

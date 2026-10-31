@@ -74,10 +74,12 @@ rather than a task belongs in AGENTS.md instead.
         matters. The tab must stay open. Nothing new is stored: the history stays
         in memory, and Strava itself is the record of what is done.
       - **Match against Strava first.** List the athlete's activities for the date
-        range. That needs `activity:read_all` on top of `activity:write`, a scope
-        change the consent screen will show. A Matrix ride matches a Strava
-        activity when they overlap in time, with about 2 minutes of slack. Then
-        each ride is one of:
+        range. `activity:read_all` is already asked for (the single-ride button
+        uses it to read the activity a "duplicate" names), but the manifest's host
+        permission covers only `/api/v3/activities/*`, so the athlete's activity
+        list is a new path to grant. A Matrix ride matches a Strava activity when
+        they overlap in time, with about 2 minutes of slack. Then each ride is one
+        of:
         - already ours (named by `workoutTitle`, no device): skip;
         - covered by an Apple Watch ride: upload, then list the watch copy;
         - on Strava with nothing: upload.

@@ -722,6 +722,13 @@ cover the DOM: accessible labels, arrow-key scrubbing, the dropout readout, the
 sprint bars, the table row count. Note that jsdom rebases `import.meta.url` onto the
 document URL, so fixtures there must be resolved from `process.cwd()`.
 
+The content script and the options page (`src/content/main.test.ts`,
+`src/options/main.test.ts`) start themselves on import, so their tests stub `chrome`
+first, import the module **once**, and run in order against that one instance —
+which is also how it lives in a tab. A second import would start a second poll and a
+second listener on the same document. Navigation there is `pushState`, which fires
+no event, so it is the 300 ms poll being exercised, on fake timers.
+
 `src/layers.test.ts` asserts **structure rather than behaviour**, and fails on a
 change no other test would notice — see "The layering" above. It parses every source
 file with the TypeScript compiler rather than grepping, because a mention of

@@ -29,8 +29,6 @@ const PATHS: Record<string, string[]> = {
   upload: ["M12 15V4", "M8 7.5l4-4 4 4", "M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"],
   // Picture frame with a peak: save the ride as an image to post.
   image: ["M4 5h16v14H4z", "M4 16l5-5 4 4 2-2 5 5", "M15.5 9.5h.01"],
-  // Droplet: Sprint 8 sweat score.
-  sweat: ["M12 3c3.5 4.2 5.5 6.9 5.5 9.4a5.5 5.5 0 1 1-11 0C6.5 9.9 8.5 7.2 12 3Z"],
 };
 
 export function icon(name: string): SVGElement {

@@ -38,6 +38,14 @@ The version history source of truth is git tags in the format `vMAJOR.MINOR.PATC
 
 - *Load full history* no longer draws the ride it fetched over a different
   workout when the rider navigates away before the answer arrives.
+- *Show stock page* no longer leaves the pill behind on a page the extension does
+  not handle. The toolbar icon can open the sheet anywhere — off the workout route,
+  or on a treadmill ride — and closing it there used to collapse to a pill that
+  nothing would remove until the next navigation. It now removes the surface, as
+  navigating there would have.
+- The options page no longer overwrites a Client ID or Secret the rider is typing
+  when the worker writes Strava's tokens — the first upload connecting, or a token
+  refresh, in another tab. Only a change to the app itself refills the fields.
 
 ### Removed
 

@@ -148,7 +148,6 @@
   border: 1px solid #333333;
   padding: 4px 0;
 }
-.sharemenu[hidden] { display: none; }
 .sharemenu button {
   font-family: var(--sans);
   font-weight: 600;
@@ -267,7 +266,7 @@ button {
 button:hover { background: var(--brand-hover); }
 button:disabled { background: #353535; cursor: default; }
 button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.back:hover, .back:disabled { background: none; }
+.back:hover { background: none; }
 
 /* ---- stat tiles: the site's workout card, 6px rule and all ---- */
 .tiles {
@@ -464,7 +463,6 @@ th {
 td { text-align: right; padding: 5px 14px; color: var(--ink-2); border-bottom: 1px solid var(--grid); }
 th:first-child, td:first-child { text-align: left; }
 footer { color: var(--ink-3); font-family: var(--alt); font-size: 13px; line-height: 1.6; }
-footer code { font-family: var(--mono); }
 
 /* ---- failure state: never a blank page over the real dashboard ---- */
 .problem {
@@ -496,5 +494,3 @@ footer code { font-family: var(--mono); }
   .sprints { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .sprint .bar { height: 110px; }
 }
-
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

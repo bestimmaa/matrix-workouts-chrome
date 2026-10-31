@@ -1,5 +1,5 @@
 import type { StravaUpload } from "matrix-workouts-core";
-import type { StravaOutcome } from "../ui/dashboard.js";
+import type { StravaOutcome } from "../ui/actions.js";
 import { messageType } from "./message.js";
 
 /**
@@ -294,10 +294,6 @@ export async function connection(deps: StravaDeps): Promise<{ app: StravaApp | u
   const app = await deps.load<StravaApp>(APP_KEY);
   return { app, connected: (await deps.load<StravaTokens>(TOKENS_KEY)) !== undefined };
 }
-
-/** Whether a storage change touches what `connection` reports. */
-export const touchesConnection = (changedKeys: string[]): boolean =>
-  changedKeys.includes(APP_KEY) || changedKeys.includes(TOKENS_KEY);
 
 /** Keep the rider's app. Tokens belong to the app that issued them, so a different app starts over. */
 export async function saveApp(deps: StravaDeps, app: StravaApp): Promise<void> {
