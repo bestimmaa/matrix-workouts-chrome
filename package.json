@@ -21,6 +21,6 @@
     "vitest": "^2.1.8"
   },
   "dependencies": {
-    "matrix-workouts-core": "^0.5.0"
+    "matrix-workouts-core": "^0.6.0"
   }
 }
