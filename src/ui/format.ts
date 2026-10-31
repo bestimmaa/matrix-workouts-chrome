@@ -49,6 +49,7 @@ const MODE_LABELS: Record<string, string> = {
   target_watts: "Target watts",
   fitness_test: "Fitness test",
   virtual_active: "Virtual Active",
+  hills: "Hills",
 };
 
 export function modeLabel(mode: string, programType: number | null): string {

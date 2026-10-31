@@ -8,6 +8,8 @@ The version history source of truth is git tags in the format `vMAJOR.MINOR.PATC
 
 ### Added
 
+- The view names a Hills ride (console program 8) "Hills" in its header, where it
+  would have read "Program 8". Core knows the mode from 0.6.0.
 - **Send to Strava** in the view's header: uploads the ride's FIT file to the
   rider's Strava account with `trainer=1`, so it arrives as an indoor ride, and
   with the program's title as its name. Built on `stravaUpload` from

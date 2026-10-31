@@ -111,6 +111,7 @@ describe("format", () => {
     expect(modeLabel("unknown", null)).toBe("Unidentified program");
     expect(modeLabel("target_watts", 20)).toBe("Target watts");
     expect(modeLabel("virtual_active", 47)).toBe("Virtual Active");
+    expect(modeLabel("hills", 8)).toBe("Hills");
   });
 
   it("splits a duration into the value/unit pairs the site's tiles use", () => {
