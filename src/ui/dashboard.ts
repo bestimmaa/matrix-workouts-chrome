@@ -33,6 +33,8 @@ export interface DashboardOptions {
   records?: Promise<RideComparison>;
   /** Open the records page. Without it the records section has no button to it. */
   onShowRecords?: () => void;
+  /** Exclude this ride from records, or count it again. Without it, no button. */
+  onToggleExcluded?: () => void;
 }
 
 /** Build the whole replacement view for one workout. */
@@ -51,7 +53,10 @@ export function renderDashboard(workout: Workout, options: DashboardOptions): HT
   ]);
 
   if (options.records) {
-    const section = recordsSection(options.onShowRecords);
+    const section = recordsSection({
+      ...(options.onShowRecords ? { onShowAll: options.onShowRecords } : {}),
+      ...(options.onToggleExcluded ? { onToggleExcluded: options.onToggleExcluded } : {}),
+    });
     options.records.then(section.show, section.fail);
     page.append(section.root);
   }

@@ -49,6 +49,8 @@ for (const id of ids) {
     onShowStock: () => {},
     sendToStrava: async () => ({ kind: "failed" }),
     records: Promise.resolve(compareRide(workout, history)),
+    onShowRecords: () => {},
+    onToggleExcluded: () => {},
   });
   // Let the records section fill in before the DOM is serialized.
   await new Promise((done) => setTimeout(done, 0));
@@ -74,9 +76,13 @@ for (const id of ids) {
 // ride: the fixtures span eight weeks, and this splits them so some records are old.
 {
   const latest = Math.max(...history.map((w) => w.startedAt.getTime()));
-  const view = renderRecordsPage(Promise.resolve({ workouts: history, truncated: false }), {
+  // One ride excluded, so the page shows the excluded list and a record standing in.
+  const excluded = history.filter((w) => w.id === "6a5e4fe418e8655524aebab4");
+  const view = renderRecordsPage(Promise.resolve({ workouts: history, truncated: false, excluded }), {
     onShowStock: () => {},
     onBackToRide: () => {},
+    onExclude: () => {},
+    onInclude: () => {},
     now: new Date(latest + 21 * 86_400_000),
   });
   await new Promise((done) => setTimeout(done, 0));

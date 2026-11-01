@@ -81,7 +81,7 @@ describe("renderRecordsPage", () => {
   const now = new Date("2026-10-27T00:00:00Z"); // eight weeks after SINCE
 
   it("loads, then shows a section per machine type with a target", async () => {
-    const page = renderRecordsPage(Promise.resolve({ workouts: all(), truncated: false }), {
+    const page = renderRecordsPage(Promise.resolve({ workouts: all(), truncated: false, excluded: [] }), {
       onShowStock: () => {},
       now,
     });
@@ -96,7 +96,7 @@ describe("renderRecordsPage", () => {
 
   it("links every record to its ride", async () => {
     const workouts = all();
-    const page = renderRecordsPage(Promise.resolve({ workouts, truncated: false }), { onShowStock: () => {}, now });
+    const page = renderRecordsPage(Promise.resolve({ workouts, truncated: false, excluded: [] }), { onShowStock: () => {}, now });
     await settle();
     const ids = new Set(workouts.map((w) => w.routeId));
     const links = [...page.querySelectorAll<HTMLAnchorElement>(".recordtable a")];
@@ -105,7 +105,7 @@ describe("renderRecordsPage", () => {
   });
 
   it("says when the history is incomplete, and when it could not be loaded", async () => {
-    const partial = renderRecordsPage(Promise.resolve({ workouts: all(), truncated: true }), {
+    const partial = renderRecordsPage(Promise.resolve({ workouts: all(), truncated: true, excluded: [] }), {
       onShowStock: () => {},
       now,
     });
@@ -113,6 +113,39 @@ describe("renderRecordsPage", () => {
     await settle();
     expect(partial.textContent).toContain("more history than it sent");
     expect(failed.textContent).toContain("Could not load your history");
+  });
+
+  it("leaves excluded rides out of every record, lists them, and can count them again", async () => {
+    const bad = ride("bad", "2026-09-05", 900, 6);
+    const good = ride("good", "2026-09-06", 200, 6);
+    const included: string[] = [];
+    const page = renderRecordsPage(
+      Promise.resolve({ workouts: [bad, good], truncated: false, excluded: [{ id: "bad", startedAt: bad.startedAt }] }),
+      { onShowStock: () => {}, onInclude: (id) => included.push(id), now },
+    );
+    await settle();
+    const minute = [...page.querySelectorAll(".recordtable tbody tr")].find((tr) => tr.querySelector("th")?.textContent === "1 min");
+    expect(minute?.textContent).toContain("200 W");
+    expect(minute?.textContent).not.toContain("900 W");
+    const list = page.querySelector(".excludedrides")!;
+    expect(list.textContent).toContain("1 left out of every record");
+    list.querySelector<HTMLButtonElement>("li button")!.click();
+    expect(included).toEqual(["bad"]);
+  });
+
+  it("excludes the ride a record came from", async () => {
+    const excluded: string[] = [];
+    const page = renderRecordsPage(Promise.resolve({ workouts: all(), truncated: false, excluded: [] }), {
+      onShowStock: () => {},
+      onExclude: (ride) => excluded.push(ride.id),
+      now,
+    });
+    await settle();
+    const button = page.querySelector<HTMLButtonElement>(".excludeeffort")!;
+    expect(button.getAttribute("aria-label")).toMatch(/^Exclude the ride of /);
+    button.click();
+    expect(excluded).toHaveLength(1);
+    expect(page.querySelector(".excludedrides")).toBeNull();
   });
 
   it("offers a way back only when opened from a ride", () => {

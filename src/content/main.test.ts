@@ -39,16 +39,27 @@ function withTreadmill(id: string): string {
 }
 
 let toggle: () => void;
+/** `chrome.storage.local`, in memory. */
+const stored = new Map<string, unknown>();
 
-/** Let the history promise and the section's `then` run. */
+/** Let pending promises run: a history load, a storage write, the re-render after it. */
 const settle = async () => {
-  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  for (let i = 0; i < 50; i += 1) await Promise.resolve();
 };
 
 beforeAll(async () => {
   localStorage.setItem(PERSIST_KEY, persistRoot);
   vi.useFakeTimers();
   vi.stubGlobal("chrome", {
+    storage: {
+      local: {
+        get: async (key: string) => (stored.has(key) ? { [key]: stored.get(key) } : {}),
+        set: async (items: Record<string, unknown>) => {
+          for (const [key, value] of Object.entries(items)) stored.set(key, value);
+        },
+        remove: async (key: string) => void stored.delete(key),
+      },
+    },
     runtime: {
       onMessage: {
         addListener: (listener: (message: unknown) => void) => {
@@ -167,6 +178,26 @@ describe("the content script", () => {
     sheet().querySelector<HTMLButtonElement>(".backtoride")!.click();
     expect(band()).toBe("Upright bike · Sprint 8");
     expect(loadHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it("excludes a ride from its records card, lists it on the records page, and counts it again", async () => {
+    go(`/workouts/${SPRINT}`);
+    pill().click();
+    await settle();
+    const card = () => sheet().querySelector(".records-card")!;
+    card().querySelector<HTMLButtonElement>("button.exclude")!.click();
+    await settle();
+    expect(card().textContent).toContain("You excluded this ride from records");
+    expect((stored.get("excludedRides") as { id: string }[]).map((r) => r.id)).toEqual([SPRINT]);
+
+    card().querySelector<HTMLButtonElement>(".allrecords")!.click();
+    await settle();
+    const excluded = sheet().querySelector(".excludedrides")!;
+    expect(excluded.textContent).toContain("1 left out of every record");
+    excluded.querySelector<HTMLButtonElement>("li button")!.click();
+    await settle();
+    expect(sheet().querySelector(".excludedrides")).toBeNull();
+    expect(stored.has("excludedRides")).toBe(false);
   });
 
   it("gives a ride on another machine no pill, and no pill on the way out either", () => {

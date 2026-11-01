@@ -184,8 +184,21 @@ record (set before the 8 weeks) that recent form is closest to; else the shortes
 duration never ridden; else the shortest record with no recent effort at that
 length. When a machine has no rides in the 8 weeks, the page says that instead.
 
-Not built: trends, sprint-to-sprint comparison, and anything stored (targets,
-milestones, excluding a bad ride). See TODO.md.
+Also built, **experimental**: **excluding a bad ride from records**. One glitched
+power reading could otherwise hold a record permanently out of reach. A rider
+excludes a whole ride, not one effort: the console gives no reason to trust the
+rest of a ride whose power went wrong somewhere. Ways to do it:
+- *Exclude from records* on the ride's records section.
+- The small × beside any record on the records page.
+
+An excluded ride counts toward no record anywhere, and the next best effort stands
+in for it. Its own records section says it is excluded instead of judging it. The
+records page lists excluded rides with *Count again*, and the options page lists
+them and clears them. The list is read fresh from storage every time records are
+computed, so a clear on the options page takes effect without a reload.
+
+Not built: trends, sprint-to-sprint comparison, and stored targets or milestones.
+See TODO.md.
 
 **Scope: the indoor bike only, and this is now enforced rather than merely
 intended.** Both bike types (upright and recumbent) are covered by fixtures and are
@@ -597,7 +610,11 @@ This handles personal health data.
   `matches` pattern, which needs no host permission. `orion.jfit.co` answers 403 and
   must not be added.
 - No remote code. MV3 forbids it and so do we.
-- Anything written to `chrome.storage` must be user-visible and clearable.
+- Anything written to `chrome.storage` must be user-visible and clearable. Two
+  things are: the rider's Strava app and tokens (see "Strava"), and the rides
+  excluded from records (`excludedRides`, see `src/content/exclusions.ts`): each
+  ride's id, start time and when it was excluded, and nothing from the ride itself.
+  The options page lists both and clears both.
 - **The JSON export is a local download and must stay one.** It carries the
   upstream record verbatim, ids and all, and it is never what goes to Strava. The
   button's tooltip says nothing is uploaded before it is pressed, and a

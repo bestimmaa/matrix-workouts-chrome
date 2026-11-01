@@ -55,6 +55,29 @@ describe("compareRide", () => {
   });
 });
 
+describe("compareRide with exclusions", () => {
+  const bad = ride("bad", "2026-09-01", 900, 6); // a glitch: 900 W for a minute
+  const good = ride("good", "2026-09-02", 200, 6);
+  const today = ride("today", "2026-09-08", 230, 6);
+
+  it("lets the next best stand in for an excluded ride", () => {
+    expect(compareRide(today, [bad, good, today]).records.find((r) => r.windowSeconds === 60)?.outcome).toBe(
+      "below-record",
+    );
+    const comparison = compareRide(today, [bad, good, today], false, new Set(["bad"]));
+    const minute = comparison.records.find((r) => r.windowSeconds === 60);
+    expect(minute?.outcome).toBe("record");
+    expect(minute?.previous?.workoutId).toBe("good");
+    expect(comparison.compared).toBe(1);
+    expect(comparison.excludedEarlier).toBe(1);
+  });
+
+  it("marks the ride itself as excluded", () => {
+    expect(compareRide(bad, [bad], false, new Set(["bad"])).excluded).toBe(true);
+    expect(compareRide(bad, [bad]).excluded).toBe(false);
+  });
+});
+
 describe("recordsSection", () => {
   const old = ride("old", "2026-09-01", 200, 6);
 
@@ -88,6 +111,26 @@ describe("recordsSection", () => {
   it("says when the history is incomplete", () => {
     const out = text(compareRide(ride("new", "2026-09-08", 230, 6), [old], true));
     expect(out).toContain("history incomplete");
+  });
+
+  it("says an excluded ride is excluded, and offers to count it again", () => {
+    let toggled = 0;
+    const section = recordsSection({ onToggleExcluded: () => toggled++ });
+    section.show(compareRide(old, [old], false, new Set(["old"])));
+    expect(section.root.textContent).toContain("You excluded this ride from records");
+    expect(section.root.querySelector("li")).toBeNull();
+    const button = section.root.querySelector<HTMLButtonElement>("button.exclude")!;
+    expect(button.textContent).toBe("Count in records again");
+    button.click();
+    expect(toggled).toBe(1);
+    expect(button.disabled).toBe(true);
+  });
+
+  it("offers to exclude a counted ride, and counts the excluded earlier ones", () => {
+    const section = recordsSection({ onToggleExcluded: () => {} });
+    section.show(compareRide(ride("new", "2026-09-08", 230, 6), [old, ride("x", "2026-09-02", 100, 6)], false, new Set(["x"])));
+    expect(section.root.querySelector("button.exclude")?.textContent).toBe("Exclude from records");
+    expect(section.root.textContent).toContain("against 1 earlier ride (1 excluded)");
   });
 
   it("fails quietly, with the ride still on screen", () => {

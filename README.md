@@ -33,7 +33,9 @@ and a link to that ride. To judge this, opening a ride fetches your full history
 once per tab, from the same API the site uses. It stays in memory and is never
 stored. **All records**, or the toolbar icon anywhere off a ride, opens the records
 page: every duration's best ever next to your best in the last 8 weeks, with one next
-target. *Experimental.*
+target. If a ride's power looks wrong, **Exclude from records** (or the × beside a
+record) leaves it out of every record. The options page lists excluded rides, and can
+count them all again. *Experimental.*
 
 The view's header has **Share image**, which saves the ride as a picture to post — a
 9:16 story or a 4:5 feed post — and **Export JSON**, which saves the whole record.

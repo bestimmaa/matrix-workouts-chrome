@@ -16,6 +16,7 @@ import { compareRide, type RideComparison } from "../ui/records.js";
 import { renderRecordsPage, type RecordsInput } from "../ui/recordsPage.js";
 import { el } from "../ui/svg.js";
 import { loadHistory } from "./history.js";
+import { chromeExclusions, exclude, include, loadExcluded } from "./exclusions.js";
 import { createSurface, type Surface } from "./mount.js";
 import { observeLocation, workoutIdFromPath } from "./route.js";
 import { sendToStrava } from "./strava.js";
@@ -78,11 +79,26 @@ function ensureHistory(): Promise<HistoryResult> {
  * rider has opened the view, and the answer stays in memory like any other history.
  */
 function recordsFor(workout: Workout): Promise<RideComparison> {
-  return ensureHistory().then((result) => {
+  return Promise.all([ensureHistory(), excludedIds()]).then(([result, excluded]) => {
     // The ride on screen may be newer than the fetched history (recorded since);
     // judging it needs only the rides before it, which the history does hold.
-    return compareRide(workout, result.workouts, result.truncated);
+    return compareRide(workout, result.workouts, result.truncated, excluded);
   });
+}
+
+/**
+ * The rides the rider excluded from records. Read fresh every time rather than
+ * cached: the options page can clear them while this tab is open, and the read is
+ * local and small.
+ */
+function excludedIds(): Promise<Set<string>> {
+  return loadExcluded(chromeExclusions).then((rides) => new Set(rides.map((ride) => ride.id)));
+}
+
+/** Exclude a ride from records, or count it again if it is excluded. */
+async function toggleExcluded(workout: Workout): Promise<void> {
+  if ((await excludedIds()).has(workout.id)) await include(chromeExclusions, workout.id);
+  else await exclude(chromeExclusions, workout, new Date());
 }
 
 function ensureSurface(): Surface {
@@ -141,16 +157,20 @@ function shell(title: string, children: (Node | string)[], onBack: () => void): 
  * the route's, which `findWorkout` may have matched against either of the record's
  * two ids — so it, not `workout.id`, is what marks the sheet as rendered.
  */
-function showWorkout(view: Surface, id: string, workout: Workout): void {
+function showWorkout(view: Surface, id: string, workout: Workout, keepScroll = false): void {
   if (!isSupportedMachine(workout.machineType)) return outOfScope(view, workout.machineType);
-  view.render(
-    renderDashboard(workout, {
-      onShowStock: showStock,
-      sendToStrava: () => sendToStrava(workout),
-      records: recordsFor(workout),
-      onShowRecords: () => showRecords(view, () => showWorkout(view, id, workout)),
-    }),
-  );
+  // Re-render in place after an exclusion, unless the sheet has moved on since.
+  const again = () => {
+    if (dashboard.isConnected) showWorkout(view, id, workout, true);
+  };
+  const dashboard = renderDashboard(workout, {
+    onShowStock: showStock,
+    sendToStrava: () => sendToStrava(workout),
+    records: recordsFor(workout),
+    onShowRecords: () => showRecords(view, () => showWorkout(view, id, workout)),
+    onToggleExcluded: () => void toggleExcluded(workout).then(again, again),
+  });
+  view.render(dashboard, { keepScroll });
   renderedId = id;
 }
 
@@ -159,18 +179,26 @@ function showWorkout(view: Surface, id: string, workout: Workout): void {
  * with a way back to that ride, or from the toolbar icon anywhere else on the site.
  * Rides on machines this extension does not handle are left out, as everywhere else.
  */
-function showRecords(view: Surface, backToRide?: () => void): void {
-  const input: Promise<RecordsInput> = ensureHistory().then((result) => ({
-    workouts: result.workouts.filter((workout) => isSupportedMachine(workout.machineType)),
-    truncated: result.truncated,
-  }));
-  view.render(
-    renderRecordsPage(input, {
-      onShowStock: showStock,
-      ...(backToRide ? { onBackToRide: backToRide } : {}),
-      now: new Date(),
+function showRecords(view: Surface, backToRide?: () => void, keepScroll = false): void {
+  const input: Promise<RecordsInput> = Promise.all([ensureHistory(), loadExcluded(chromeExclusions)]).then(
+    ([result, excluded]) => ({
+      workouts: result.workouts.filter((workout) => isSupportedMachine(workout.machineType)),
+      truncated: result.truncated,
+      excluded: excluded.map((ride) => ({ id: ride.id, startedAt: new Date(ride.startedAt) })),
     }),
   );
+  // Re-render in place after an exclusion, unless the sheet has moved on since.
+  const again = () => {
+    if (page.isConnected) showRecords(view, backToRide, true);
+  };
+  const page = renderRecordsPage(input, {
+    onShowStock: showStock,
+    ...(backToRide ? { onBackToRide: backToRide } : {}),
+    onExclude: (ride) => void exclude(chromeExclusions, ride, new Date()).then(again, again),
+    onInclude: (id) => void include(chromeExclusions, id).then(again, again),
+    now: new Date(),
+  });
+  view.render(page, { keepScroll });
   // Not a workout: a pill press on a ride route brings the ride back.
   renderedId = null;
 }
