@@ -1,6 +1,6 @@
 import { personalRecords, type PowerCurvePoint, type WindowRecord, type Workout } from "matrix-workouts-core";
 import { topBar } from "./dashboard.js";
-import { machineLabel } from "./format.js";
+import { fullDate, machineLabel, shortDate, wattsText } from "./format.js";
 import {
   MAX_TARGET_WATTS,
   STEP_WATTS,
@@ -127,9 +127,6 @@ export function suggestNext(records: readonly WindowRecord[]): Suggestion | null
   return null;
 }
 
-const shortDate = (date: Date): string => date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-const fullDate = (date: Date): string =>
-  date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 
 /** Exclude the ride an effort came from. Absent, the page offers no exclusion. */
 type OnExclude = ((point: PowerCurvePoint) => void) | undefined;
@@ -137,7 +134,7 @@ type OnExclude = ((point: PowerCurvePoint) => void) | undefined;
 function effortCell(point: PowerCurvePoint | null, empty: string, onExclude: OnExclude): HTMLElement {
   if (!point) return el("td", { class: "empty", text: empty });
   const cell = el("td", {}, [
-    el("strong", { text: `${Math.round(point.watts)} W` }),
+    el("strong", { text: wattsText(point.watts) }),
     " ",
     el("a", { href: `/workouts/${point.routeId}`, text: shortDate(point.startedAt) }),
   ]);
@@ -230,7 +227,7 @@ function targetLine(target: Suggestion | null, idleSince: Date | null): HTMLElem
     const { allTime } = target.record;
     return el("p", { class: "target" }, [
       el("strong", { text: `Suggested next: ${windowLabel(target.record.windowSeconds)} at ${Math.round(allTime.watts) + 1} W.` }),
-      ` No ride in the last 8 weeks held power that long. Your record is ${Math.round(allTime.watts)} W, from `,
+      ` No ride in the last 8 weeks held power that long. Your record is ${wattsText(allTime.watts)}, from `,
       el("a", { href: `/workouts/${allTime.routeId}`, text: fullDate(allTime.startedAt) }),
       ".",
     ]);
@@ -238,8 +235,8 @@ function targetLine(target: Suggestion | null, idleSince: Date | null): HTMLElem
   const { record, gapWatts } = target;
   return el("p", { class: "target" }, [
     el("strong", { text: `Suggested next: ${windowLabel(record.windowSeconds)} at ${Math.round(record.allTime.watts) + 1} W.` }),
-    ` Your best in the last 8 weeks is ${Math.round(record.recent.watts)} W, ${gapWatts} W short of the ` +
-      `${Math.round(record.allTime.watts)} W you held on `,
+    ` Your best in the last 8 weeks is ${wattsText(record.recent.watts)}, ${gapWatts} W short of the ` +
+      `${wattsText(record.allTime.watts)} you held on `,
     el("a", { href: `/workouts/${record.allTime.routeId}`, text: fullDate(record.allTime.startedAt) }),
     ".",
   ]);
@@ -314,8 +311,17 @@ function targetCell(
         " ",
         ...clear(),
       );
+    } else if (steps.best && Math.round(steps.best.watts) >= target.watts) {
+      // Only rides after the target count, and the best is older: it happens when a
+      // ride excluded at the time is counted again. Say so rather than "1 W to go".
+      cell.append(
+        el("strong", { text: `Your target ${target.watts} W` }),
+        ` (set ${shortDate(target.setAt)}) is below your best of ${wattsText(steps.best.watts)}, ` +
+          "from a ride before you set it. Set a higher one? ",
+        ...clear(),
+      );
     } else {
-      const gap = steps.best ? Math.max(1, target.watts - Math.round(steps.best.watts)) : null;
+      const gap = steps.best ? target.watts - Math.round(steps.best.watts) : null;
       cell.append(
         el("strong", { text: `Your target ${target.watts} W` }),
         `${gap !== null ? `, ${gap} W to go` : ""} (set ${shortDate(target.setAt)}) `,
@@ -347,7 +353,7 @@ function targetCell(
       if (!Number.isInteger(watts) || watts < lowest || watts > MAX_TARGET_WATTS) {
         error.textContent =
           watts < lowest && steps.best
-            ? ` Above your best of ${Math.round(steps.best.watts)} W, please.`
+            ? ` Above your best of ${wattsText(steps.best.watts)}, please.`
             : ` A whole number of watts, ${lowest} to ${MAX_TARGET_WATTS}.`;
         return;
       }
@@ -527,8 +533,10 @@ export function renderRecordsPage(input: Promise<RecordsInput>, options: Records
       })()
     : [];
 
-  input.then(
-    ({ workouts, truncated, excluded, targets }) => {
+  // `catch` after `then`, so a failure while drawing the page also lands on the
+  // failure message rather than leaving it loading forever.
+  input
+    .then(({ workouts, truncated, excluded, targets }) => {
       const excludedIds = new Set(excluded.map((ride) => ride.id));
       const counted = workouts.filter((workout) => !excludedIds.has(workout.id));
       const machines = machineRecords(counted, recentSince);
@@ -558,13 +566,12 @@ export function renderRecordsPage(input: Promise<RecordsInput>, options: Records
           : [el("p", { class: "lede", text: "No rides in your history yet." })]),
         ...(excluded.length > 0 ? [excludedSection(excluded, workouts, options.onInclude)] : []),
       );
-    },
-    () => {
+    })
+    .catch(() => {
       body.replaceChildren(
         el("p", { class: "lede", text: "Could not load your history, so there are no records to show. Try again later." }),
       );
-    },
-  );
+    });
 
   return el("div", { class: "wrap" }, [
     topBar(options.onShowStock, "Records", back),

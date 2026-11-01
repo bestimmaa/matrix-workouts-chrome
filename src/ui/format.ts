@@ -59,6 +59,21 @@ export function modeLabel(mode: string, programType: number | null): string {
   return programType === null ? "Unidentified program" : `Program ${programType}`;
 }
 
+/** `3 Sep`: beside a number that links to its ride. */
+export function shortDate(date: Date): string {
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+/** `3 Sep 2026`: where a date stands on its own. */
+export function fullDate(date: Date): string {
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+/** `212 W`. Records compare on this rounded figure (see `beats` in core), so show it. */
+export function wattsText(watts: number): string {
+  return `${Math.round(watts)} W`;
+}
+
 export function longDate(date: Date): string {
   return date.toLocaleDateString(undefined, { day: "2-digit", month: "long", year: "numeric" });
 }

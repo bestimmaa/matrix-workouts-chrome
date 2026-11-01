@@ -179,6 +179,21 @@ describe("renderRecordsPage", () => {
     expect(set).toEqual([{ machineType: "upright_bike", windowSeconds: 300, watts: 180 }]);
   });
 
+  it("says when a target is already below the best, from a ride before it was set", async () => {
+    // The 300 W ride was excluded when the 250 W target was set, then counted again.
+    const rides = [ride("old", "2026-09-01", 300, 6), ride("new", "2026-09-20", 240, 6)];
+    const targets = [{ machineType: "upright_bike", windowSeconds: 60, watts: 250, setAt: new Date("2026-09-10T00:00:00Z") }];
+    const page = renderRecordsPage(Promise.resolve({ workouts: rides, truncated: false, excluded: [], targets }), {
+      onShowStock: () => {},
+      now,
+    });
+    await settle();
+    const row = [...page.querySelectorAll(".milestonetable tr")].find((tr) => tr.querySelector("th")?.textContent === "1 min")!;
+    const cell = row.querySelector(".owntarget")!.textContent;
+    expect(cell).toContain("is below your best of 300 W, from a ride before you set it");
+    expect(cell).not.toContain("to go");
+  });
+
   it("refuses a target at or below the current best, and says why", async () => {
     const set: unknown[] = [];
     const page = renderRecordsPage(

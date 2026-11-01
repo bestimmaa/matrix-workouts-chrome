@@ -58,23 +58,45 @@ export async function loadExcluded(storage: ExclusionStorage): Promise<ExcludedR
   return stored.filter(isExcludedRide).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 }
 
+/**
+ * Run read-modify-write changes one after another. Two quick clicks (× on two
+ * records) would otherwise both read the list before either saved, and the second
+ * save would silently undo the first. This orders the writes made from one page;
+ * a tab and the options page are separate pages and can still interleave, which
+ * needs two people's worth of clicking at once.
+ */
+export function serially(): <T>(change: () => Promise<T>) => Promise<T> {
+  let last: Promise<unknown> = Promise.resolve();
+  return (change) => {
+    const run = last.then(change, change);
+    last = run.catch(() => undefined);
+    return run;
+  };
+}
+
+const inOrder = serially();
+
 /** Exclude one ride. Excluding it again changes nothing. */
-export async function exclude(
+export function exclude(
   storage: ExclusionStorage,
   ride: { id: string; startedAt: Date },
   now: Date,
 ): Promise<ExcludedRide[]> {
-  const rides = await loadExcluded(storage);
-  if (rides.some((r) => r.id === ride.id)) return rides;
-  const next = [...rides, { id: ride.id, startedAt: ride.startedAt.toISOString(), excludedAt: now.toISOString() }];
-  await storage.save(next);
-  return loadExcluded(storage);
+  return inOrder(async () => {
+    const rides = await loadExcluded(storage);
+    if (rides.some((r) => r.id === ride.id)) return rides;
+    const next = [...rides, { id: ride.id, startedAt: ride.startedAt.toISOString(), excludedAt: now.toISOString() }];
+    await storage.save(next);
+    return loadExcluded(storage);
+  });
 }
 
 /** Count a ride in records again. The last one gone removes the key entirely. */
-export async function include(storage: ExclusionStorage, id: string): Promise<ExcludedRide[]> {
-  const next = (await loadExcluded(storage)).filter((r) => r.id !== id);
-  if (next.length === 0) await storage.clear();
-  else await storage.save(next);
-  return next;
+export function include(storage: ExclusionStorage, id: string): Promise<ExcludedRide[]> {
+  return inOrder(async () => {
+    const next = (await loadExcluded(storage)).filter((r) => r.id !== id);
+    if (next.length === 0) await storage.clear();
+    else await storage.save(next);
+    return next;
+  });
 }

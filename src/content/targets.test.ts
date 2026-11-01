@@ -35,6 +35,15 @@ describe("targets", () => {
     expect(targets.find((t) => t.machineType === "upright_bike")).toEqual({ ...fiveMin, watts: 250, setAt: later.toISOString() });
   });
 
+  it("keeps both of two targets set at once", async () => {
+    const storage = memory();
+    await Promise.all([
+      setTarget(storage, { ...fiveMin, watts: 240 }, NOW),
+      setTarget(storage, { machineType: "upright_bike", windowSeconds: 1200, watts: 170 }, NOW),
+    ]);
+    expect((await loadTargets(storage)).map((t) => t.windowSeconds)).toEqual([300, 1200]);
+  });
+
   it("refuses a number that is not a sensible whole number of watts", async () => {
     const storage = memory();
     for (const watts of [0, -5, 12.5, 2001, Number.NaN]) {

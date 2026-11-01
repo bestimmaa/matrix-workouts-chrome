@@ -1,4 +1,4 @@
-import { bestEffort, type PowerCurvePoint, type Workout } from "matrix-workouts-core";
+import { beats, bestEffort, type PowerCurvePoint, type Workout } from "matrix-workouts-core";
 
 /**
  * Milestones and the rider's own targets, worked out from the history.
@@ -65,7 +65,7 @@ export function ladder(rides: readonly Workout[], windowSeconds: number): Ladder
   let best: PowerCurvePoint | null = null;
   let top = 0;
   for (const effort of effortsInOrder(rides, windowSeconds)) {
-    if (!best || shown(effort) > shown(best)) best = effort;
+    if (!best || beats(effort, best)) best = effort;
     const reached = Math.floor(shown(effort) / STEP_WATTS) * STEP_WATTS;
     for (let watts = top + STEP_WATTS; watts <= reached; watts += STEP_WATTS) {
       earned.push({ windowSeconds, watts, effort });

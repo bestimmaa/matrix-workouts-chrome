@@ -13,6 +13,7 @@
  */
 
 import { MAX_TARGET_WATTS } from "../ui/milestones.js";
+import { serially } from "./exclusions.js";
 
 export const TARGETS_KEY = "recordTargets";
 
@@ -62,26 +63,35 @@ export async function loadTargets(storage: TargetStorage): Promise<StoredTarget[
   return stored.filter(isStoredTarget).sort((a, b) => a.machineType.localeCompare(b.machineType) || a.windowSeconds - b.windowSeconds);
 }
 
+/** Writes from one page, one after another; see `serially` for why. */
+const inOrder = serially();
+
 /** Set the target for one duration on one machine type, replacing any there was. */
-export async function setTarget(
+export function setTarget(
   storage: TargetStorage,
   target: Omit<StoredTarget, "setAt">,
   now: Date,
 ): Promise<StoredTarget[]> {
   const next = { ...target, setAt: now.toISOString() };
-  if (!isStoredTarget(next)) throw new RangeError(`A target must be a whole number of watts, 1 to ${MAX_TARGET_WATTS}.`);
-  const kept = (await loadTargets(storage)).filter((t) => !sameSlot(t, target));
-  await storage.save([...kept, next]);
-  return loadTargets(storage);
+  if (!isStoredTarget(next)) {
+    return Promise.reject(new RangeError(`A target must be a whole number of watts, 1 to ${MAX_TARGET_WATTS}.`));
+  }
+  return inOrder(async () => {
+    const kept = (await loadTargets(storage)).filter((t) => !sameSlot(t, target));
+    await storage.save([...kept, next]);
+    return loadTargets(storage);
+  });
 }
 
 /** Remove one target. The last one gone removes the key entirely. */
-export async function clearTarget(
+export function clearTarget(
   storage: TargetStorage,
   slot: Pick<StoredTarget, "machineType" | "windowSeconds">,
 ): Promise<StoredTarget[]> {
-  const kept = (await loadTargets(storage)).filter((t) => !sameSlot(t, slot));
-  if (kept.length === 0) await storage.clear();
-  else await storage.save(kept);
-  return kept;
+  return inOrder(async () => {
+    const kept = (await loadTargets(storage)).filter((t) => !sameSlot(t, slot));
+    if (kept.length === 0) await storage.clear();
+    else await storage.save(kept);
+    return kept;
+  });
 }

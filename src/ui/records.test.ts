@@ -108,6 +108,12 @@ describe("recordsSection", () => {
     expect(out).toContain("10 W short of your 200 W");
   });
 
+  it("says 'level with', not '1 W short', when the ride matches the record on screen", () => {
+    const out = text(compareRide(ride("same", "2026-09-08", 200.4, 6), [old]));
+    expect(out).toContain("level with your 200 W");
+    expect(out).not.toContain("W short");
+  });
+
   it("says when the history is incomplete", () => {
     const out = text(compareRide(ride("new", "2026-09-08", 230, 6), [old], { truncated: true }));
     expect(out).toContain("history incomplete");

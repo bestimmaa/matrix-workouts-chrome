@@ -51,6 +51,14 @@ describe("excluded rides", () => {
     expect(storage.value).toBeUndefined();
   });
 
+  it("keeps both of two exclusions made at once", async () => {
+    const storage = memory();
+    await Promise.all([exclude(storage, ride("a", "2026-09-01"), NOW), exclude(storage, ride("b", "2026-09-02"), NOW)]);
+    expect((await loadExcluded(storage)).map((r) => r.id)).toEqual(["a", "b"]);
+    await Promise.all([include(storage, "a"), exclude(storage, ride("c", "2026-09-03"), NOW)]);
+    expect((await loadExcluded(storage)).map((r) => r.id)).toEqual(["b", "c"]);
+  });
+
   it("drops unreadable entries instead of failing the records", async () => {
     const storage = memory([{ id: "ok", startedAt: "2026-09-01T07:00:00Z", excludedAt: "x" }, { id: 4 }, null, "junk"]);
     expect((await loadExcluded(storage)).map((r) => r.id)).toEqual(["ok"]);
