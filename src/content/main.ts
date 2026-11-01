@@ -51,7 +51,42 @@ let history: Workout[] | null = null;
  */
 let historyRequest: Promise<HistoryResult> | null = null;
 
+/**
+ * The history, fetched once per tab and fetched again only when it is visibly out of
+ * date: the site's own cache holds a ride the fetched history does not, because the
+ * rider has ridden since. Without that, a new ride would be judged a record on its
+ * own page and be missing from the records page in the same tab.
+ */
 function ensureHistory(): Promise<HistoryResult> {
+  return requestHistory().then((result) => {
+    const missing = cachedRidesMissingFrom(result);
+    // Once per set of missing rides: if the API does not return a ride the cache
+    // holds, asking again on every ride opened would not change that.
+    if (!missing || missing === refetchedFor) return result;
+    refetchedFor = missing;
+    historyRequest = null;
+    return requestHistory();
+  });
+}
+
+/** The cached rides the history lacks, as one key, or `""` when it lacks none. */
+let refetchedFor = "";
+
+function cachedRidesMissingFrom(result: HistoryResult): string {
+  try {
+    const held = new Set(result.workouts.map((workout) => workout.id));
+    return loadCachedWorkouts(localStorage)
+      .map((workout) => workout.id)
+      .filter((id) => !held.has(id))
+      .sort()
+      .join(",");
+  } catch {
+    // An unreadable cache says nothing about the history: keep what we have.
+    return "";
+  }
+}
+
+function requestHistory(): Promise<HistoryResult> {
   if (!historyRequest) {
     // Through a resolved promise, because `readCredentials` throws synchronously on
     // a missing token, and that must reach the records section as a failure rather
