@@ -135,8 +135,18 @@ export interface RecordsSection {
   fail(): void;
 }
 
-/** The section, in its loading state. The dashboard renders before the history arrives. */
-export function recordsSection(): RecordsSection {
+/**
+ * The section, in its loading state. The dashboard renders before the history
+ * arrives. With `onShowAll`, a filled section ends with a button to the records page.
+ */
+export function recordsSection(onShowAll?: () => void): RecordsSection {
+  const showAll = (): Node[] => {
+    if (!onShowAll) return [];
+    const button = el("button", { type: "button", class: "allrecords", text: "All records" });
+    button.addEventListener("click", onShowAll);
+    return [button];
+  };
+
   const root = el("section", { class: "card records-card", "aria-live": "polite" }, [
     caption(METHOD),
     el("p", { class: "pending", text: "Loading your history to compare…" }),
@@ -151,7 +161,7 @@ export function recordsSection(): RecordsSection {
       const note = comparison.truncated
         ? `${METHOD}. The API reported more history than it sent, so an older best may be missing.`
         : METHOD;
-      root.replaceChildren(caption(note, range), ...body(comparison));
+      root.replaceChildren(caption(note, range), ...body(comparison), ...showAll());
     },
     fail() {
       root.replaceChildren(

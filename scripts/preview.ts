@@ -20,6 +20,7 @@ g.window = dom.window;
 const { toWorkout } = await import("matrix-workouts-core");
 const { renderDashboard } = await import("../src/ui/dashboard.js");
 const { compareRide } = await import("../src/ui/records.js");
+const { renderRecordsPage } = await import("../src/ui/recordsPage.js");
 
 const styles = ["tokens.css", "styles.css"]
   .map((file) => readFileSync(resolve(process.cwd(), "src/ui", file), "utf8"))
@@ -67,4 +68,32 @@ for (const id of ids) {
   const out = resolve(process.cwd(), `preview/${id}.html`);
   writeFileSync(out, html);
   console.log(`${out}  (${workout.mode}, ${workout.samples.length} samples)`);
+}
+
+// The records page, over every fixture, as if opened three weeks after the latest
+// ride: the fixtures span eight weeks, and this splits them so some records are old.
+{
+  const latest = Math.max(...history.map((w) => w.startedAt.getTime()));
+  const view = renderRecordsPage(Promise.resolve({ workouts: history, truncated: false }), {
+    onShowStock: () => {},
+    onBackToRide: () => {},
+    now: new Date(latest + 21 * 86_400_000),
+  });
+  await new Promise((done) => setTimeout(done, 0));
+  const out = resolve(process.cwd(), "preview/records.html");
+  writeFileSync(
+    out,
+    `<!doctype html>
+<html lang="en" data-theme="${process.env["THEME"] ?? ""}">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Records</title>
+<style>${styles}
+  .sheet { position: static; min-height: 100vh; }
+  body { margin: 0; }
+</style>
+<div class="sheet">${view.outerHTML}</div>
+</html>`,
+  );
+  console.log(`${out}  (records page)`);
 }

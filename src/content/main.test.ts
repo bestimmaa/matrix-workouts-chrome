@@ -127,9 +127,13 @@ describe("the content script", () => {
     expect(pill().hidden).toBe(false);
   });
 
-  it("explains itself off the workout route, and leaves nothing behind when closed", () => {
+  it("opens the records page off the workout route, and leaves nothing behind when closed", async () => {
     toggle();
-    expect(sheet().textContent).toContain("Open a workout first");
+    expect(band()).toBe("Personal records");
+    await settle();
+    expect(sheet().textContent).toContain("Upright bike");
+    // Opened from the toolbar, not from a ride: there is no ride to go back to.
+    expect(sheet().querySelector(".backtoride")).toBeNull();
     // The pill never belongs on a page this extension does not handle, so handing
     // the page back here removes the surface rather than collapsing to one.
     showStock();
@@ -148,6 +152,20 @@ describe("the content script", () => {
     await settle();
     expect(records()).toMatch(/against \d+ earlier rides/);
     // Rides were opened in earlier tests as well: one request has served them all.
+    expect(loadHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it("goes from a ride's records to the records page and back to the ride", async () => {
+    go(`/workouts/${SPRINT}`);
+    pill().click();
+    await settle();
+    sheet().querySelector<HTMLButtonElement>(".allrecords")!.click();
+    expect(band()).toBe("Personal records");
+    await settle();
+    expect(sheet().querySelectorAll(".recordspage").length).toBeGreaterThan(0);
+
+    sheet().querySelector<HTMLButtonElement>(".backtoride")!.click();
+    expect(band()).toBe("Upright bike · Sprint 8");
     expect(loadHistory).toHaveBeenCalledTimes(1);
   });
 

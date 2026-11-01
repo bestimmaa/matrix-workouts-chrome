@@ -31,6 +31,8 @@ export interface DashboardOptions {
    * history arrives. Without it there is no records section.
    */
   records?: Promise<RideComparison>;
+  /** Open the records page. Without it the records section has no button to it. */
+  onShowRecords?: () => void;
 }
 
 /** Build the whole replacement view for one workout. */
@@ -49,7 +51,7 @@ export function renderDashboard(workout: Workout, options: DashboardOptions): HT
   ]);
 
   if (options.records) {
-    const section = recordsSection();
+    const section = recordsSection(options.onShowRecords);
     // `catch` after `then`, so a failure while drawing the result also lands on the
     // failure state rather than leaving the section loading forever.
     options.records.then(section.show).catch(section.fail);

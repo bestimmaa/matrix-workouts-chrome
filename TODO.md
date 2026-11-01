@@ -46,13 +46,13 @@ rather than a task belongs in AGENTS.md instead.
 
 ## Views
 
-- [ ] **A records page over the whole history.** The ride view's records section
-      (built, experimental) judges one ride. Next: all-time against recent best per
-      duration (`personalRecords` in core), one explicit next target, every number
-      linked to its ride. The natural home is the list-page replacement below. Before
-      milestones or targets that are stored, decide what is frozen once earned and how
-      a rider excludes a bad ride. Anything stored has to be visible and clearable on
-      the options page.
+- [ ] **Records: what is still missing.** The ride's records section and the records
+      page are built (experimental). Before targets or milestones that are *stored*,
+      decide what is frozen once earned and how a rider excludes a bad ride. A
+      single bad power reading can otherwise put a record permanently out of reach.
+      Anything stored has to be visible and clearable on the options page. The
+      records page might also move into the list-page replacement below, once that
+      exists.
 
 - [ ] **Use the history the API already returns.** `fetchWorkoutHistory` fetches every
       ride on the account and we render exactly one of them. Nothing cross-ride exists
