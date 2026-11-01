@@ -448,4 +448,14 @@ describe("renderDashboard", () => {
       expect(svg.replace('xmlns="http://www.w3.org/2000/svg"', "")).not.toMatch(/https?:/);
     });
   });
+
+  it("shows the records' failure state, not a spinner, when drawing them throws", async () => {
+    const view = renderDashboard(fixture(ALL[0]!), {
+      onShowStock: () => {},
+      // Not a comparison: drawing it throws inside `show`.
+      records: Promise.resolve(null as unknown as Parameters<typeof renderDashboard>[1]["records"] extends Promise<infer T> | undefined ? T : never),
+    });
+    await new Promise((done) => setTimeout(done, 0));
+    expect(view.querySelector(".records-card")?.textContent).toContain("Could not load your history");
+  });
 });

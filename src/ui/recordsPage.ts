@@ -1,6 +1,6 @@
 import { personalRecords, type PowerCurvePoint, type WindowRecord, type Workout } from "matrix-workouts-core";
 import { topBar } from "./dashboard.js";
-import { machineLabel } from "./format.js";
+import { fullDate, machineLabel, shortDate, wattsText } from "./format.js";
 import { RECORD_WINDOWS_SECONDS, windowLabel } from "./records.js";
 import { el } from "./svg.js";
 
@@ -106,14 +106,11 @@ export function nextTarget(records: readonly WindowRecord[]): NextTarget | null 
   return null;
 }
 
-const shortDate = (date: Date): string => date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-const fullDate = (date: Date): string =>
-  date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 
 function effortCell(point: PowerCurvePoint | null, empty: string): HTMLElement {
   if (!point) return el("td", { class: "empty", text: empty });
   return el("td", {}, [
-    el("strong", { text: `${Math.round(point.watts)} W` }),
+    el("strong", { text: wattsText(point.watts) }),
     " ",
     el("a", { href: `/workouts/${point.routeId}`, text: shortDate(point.startedAt) }),
   ]);
@@ -249,8 +246,10 @@ export function renderRecordsPage(input: Promise<RecordsInput>, options: Records
       })()
     : [];
 
-  input.then(
-    ({ workouts, truncated }) => {
+  // `catch` after `then`, so a failure while drawing the page also lands on the
+  // failure message rather than leaving it loading forever.
+  input
+    .then(({ workouts, truncated }) => {
       const machines = machineRecords(workouts, recentSince);
       const lede =
         "Your best mean power per duration, from every ride in your history, next to your best since " +
@@ -265,13 +264,12 @@ export function renderRecordsPage(input: Promise<RecordsInput>, options: Records
           ? machines.map((machine) => machineSection(machine, recentSince))
           : [el("p", { class: "lede", text: "No rides in your history yet." })]),
       );
-    },
-    () => {
+    })
+    .catch(() => {
       body.replaceChildren(
         el("p", { class: "lede", text: "Could not load your history, so there are no records to show. Try again later." }),
       );
-    },
-  );
+    });
 
   return el("div", { class: "wrap" }, [
     topBar(options.onShowStock, "Records", back),

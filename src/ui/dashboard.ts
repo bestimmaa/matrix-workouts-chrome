@@ -52,7 +52,9 @@ export function renderDashboard(workout: Workout, options: DashboardOptions): HT
 
   if (options.records) {
     const section = recordsSection(options.onShowRecords);
-    options.records.then(section.show, section.fail);
+    // `catch` after `then`, so a failure while drawing the result also lands on the
+    // failure state rather than leaving the section loading forever.
+    options.records.then(section.show).catch(section.fail);
     page.append(section.root);
   }
 

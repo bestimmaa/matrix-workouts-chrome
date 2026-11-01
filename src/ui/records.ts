@@ -1,5 +1,5 @@
 import { rideRecords, type PowerCurvePoint, type RideRecord, type Workout } from "matrix-workouts-core";
-import { clock } from "./format.js";
+import { clock, shortDate, wattsText } from "./format.js";
 import { el } from "./svg.js";
 
 /**
@@ -47,8 +47,7 @@ export function windowLabel(seconds: number): string {
   return seconds < 60 ? `${seconds} s` : `${seconds / 60} min`;
 }
 
-const watts = (point: PowerCurvePoint): string => `${Math.round(point.watts)} W`;
-const shortDate = (date: Date): string => date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+const watts = (point: PowerCurvePoint): string => wattsText(point.watts);
 
 /** A link to the ride a record came from, so every number can be checked. */
 function rideLink(point: PowerCurvePoint): HTMLElement {
@@ -94,10 +93,12 @@ function nearest(records: readonly RideRecord[]): HTMLElement | null {
     }
   }
   if (!best?.effort || !best.previous) return null;
-  const short = Math.max(1, Math.round(best.previous.watts) - Math.round(best.effort.watts));
+  // Below the record means at most level with it, on the rounded figures shown.
+  const short = Math.round(best.previous.watts) - Math.round(best.effort.watts);
   return el("p", { class: "nearest" }, [
     `Closest to a record: ${windowLabel(best.windowSeconds)} at ${watts(best.effort)}, ` +
-      `${short} W short of your ${watts(best.previous)} from `,
+      (short > 0 ? `${short} W short of` : "level with") +
+      ` your ${watts(best.previous)} from `,
     rideLink(best.previous),
     ".",
   ]);
