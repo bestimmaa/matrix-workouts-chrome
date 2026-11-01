@@ -528,9 +528,32 @@ footer { color: var(--ink-3); font-family: var(--alt); font-size: 13px; line-hei
 .recordtable td strong { color: var(--ink); font-weight: 700; }
 .recordtable td.empty { color: var(--ink-3); font-family: var(--alt); }
 .recordtable td.form { font-family: var(--mono); color: var(--ink-3); }
-.recordtable td.form.current { font-family: var(--alt); color: var(--ink-2); white-space: normal; }
 .meter { display: inline-block; width: 34px; height: 6px; margin-right: 6px; vertical-align: middle; background: linear-gradient(to right, var(--machine) var(--share), var(--grid) var(--share)); }
 .backtoride { white-space: nowrap; }
 @media (max-width: 900px) {
   .groups { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---- excluding a ride from records ---- */
+button.secondary, button.secondary:hover { background: transparent; color: var(--ink); border: 1px solid var(--rule); }
+button.secondary:disabled { color: var(--ink-3); }
+.recordbuttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.records-card .recordbuttons .allrecords { margin-top: 0; }
+.excludeeffort, .excludeeffort:hover {
+  background: transparent;
+  color: var(--ink-3);
+  border: 0;
+  padding: 0 4px;
+  margin-left: 2px;
+  font: 400 14px/1 var(--alt);
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+  vertical-align: baseline;
+}
+.excludeeffort:hover { color: var(--brand); }
+.excludeeffort:disabled { background: transparent; }
+.excludedrides ul { list-style: none; margin: 10px 0 0; padding: 0; }
+.excludedrides li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--grid); font-family: var(--alt); color: var(--ink-2); }
+.excludedrides li button { padding: 6px 12px; font-size: 12px; }
+.excludedrides a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }

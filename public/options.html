@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Full Matrix Workouts — Strava</title>
+    <title>Full Matrix Workouts — Options</title>
     <!-- The palette and faces come from the view's tokens.css, which options.js adds
          on load. This page's own layout is here. -->
     <style>
@@ -24,6 +24,10 @@
       button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
       #disconnect, #disconnect:hover { background: transparent; color: var(--ink); border: 1px solid var(--rule); }
       #status { font-weight: 700; }
+      #excluded ul { list-style: none; margin: 0 0 12px; padding: 0; }
+      #excluded li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--rule); }
+      #excluded li button { margin: 0; padding: 6px 12px; font-size: 12px; }
+      #excluded li button, #clearExcluded { background: transparent; color: var(--ink); border: 1px solid var(--rule); }
     </style>
   </head>
   <body>
@@ -68,6 +72,20 @@
           No athlete profile and no ride is kept.
         </p>
         <button type="button" id="disconnect">Disconnect and forget</button>
+      </section>
+
+      <h1>Records</h1>
+      <section id="excluded">
+        <h2>Excluded rides</h2>
+        <p>
+          Rides you excluded from records because their power looked wrong. None of their
+          efforts count as a record; the next best effort stands in. Stored in this browser
+          only: each ride's id, when it started, and when you excluded it. Nothing from the
+          ride itself.
+        </p>
+        <ul id="excludedList"></ul>
+        <p id="excludedNone">No rides excluded.</p>
+        <button type="button" id="clearExcluded">Count them all again</button>
       </section>
     </main>
     <script src="options.js"></script>

@@ -27,11 +27,13 @@ export const EFFORT_GROUPS = [
   { name: "Long efforts", windows: [1200, 3600] },
 ] as const satisfies readonly { name: string; windows: readonly (typeof RECORD_WINDOWS_SECONDS)[number][] }[];
 
-/** What the page is built from: the fetched history, and the clock. */
+/** What the page is built from: the fetched history, and what the rider excluded. */
 export interface RecordsInput {
   workouts: readonly Workout[];
   /** The API reported more history than it sent. */
   truncated: boolean;
+  /** Rides the rider excluded from records, by `Workout.id`, with when each started. */
+  excluded: readonly { id: string; startedAt: Date }[];
 }
 
 /** The records of one machine type, plus the rides they come from. */
@@ -107,37 +109,62 @@ export function nextTarget(records: readonly WindowRecord[]): NextTarget | null 
 }
 
 
-function effortCell(point: PowerCurvePoint | null, empty: string): HTMLElement {
+/** Exclude the ride an effort came from. Absent, the page offers no exclusion. */
+type OnExclude = ((point: PowerCurvePoint) => void) | undefined;
+
+function effortCell(point: PowerCurvePoint | null, empty: string, onExclude: OnExclude): HTMLElement {
   if (!point) return el("td", { class: "empty", text: empty });
-  return el("td", {}, [
+  const cell = el("td", {}, [
     el("strong", { text: wattsText(point.watts) }),
     " ",
     el("a", { href: `/workouts/${point.routeId}`, text: shortDate(point.startedAt) }),
   ]);
+  if (onExclude) {
+    const label = `Exclude the ride of ${fullDate(point.startedAt)} from records`;
+    const button = el("button", {
+      type: "button",
+      class: "excludeeffort",
+      text: "×",
+      title: `${label}. The next best effort takes its place.`,
+      "aria-label": label,
+    });
+    button.addEventListener("click", () => {
+      button.disabled = true;
+      onExclude(point);
+    });
+    cell.append(button);
+  }
+  return cell;
 }
 
 /** Recent as a share of all-time: a bar, and the number beside it. */
 function formCell(record: WindowRecord): HTMLElement {
   if (!record.allTime || !record.recent) return el("td", { class: "empty", text: "" });
-  if (record.recent.workoutId === record.allTime.workoutId) {
-    return el("td", { class: "form current", text: "record is recent" });
-  }
-  const share = Math.min(100, Math.round((record.recent.watts / record.allTime.watts) * 100));
+  // The record itself is recent: 100%, which the target line above spells out.
+  const share =
+    record.recent.workoutId === record.allTime.workoutId
+      ? 100
+      : Math.min(100, Math.round((record.recent.watts / record.allTime.watts) * 100));
   return el("td", { class: "form" }, [
     el("span", { class: "meter", style: `--share: ${share}%`, "aria-hidden": "true" }),
     `${share}%`,
   ]);
 }
 
-function groupTable(name: string, records: readonly WindowRecord[]): HTMLElement {
+function groupTable(name: string, records: readonly WindowRecord[], onExclude: OnExclude): HTMLElement {
   const body = el(
     "tbody",
     {},
     records.map((record) =>
       el("tr", {}, [
         el("th", { scope: "row", text: windowLabel(record.windowSeconds) }),
-        effortCell(record.allTime, "not recorded yet"),
-        effortCell(record.recent, record.allTime ? "none recently" : ""),
+        effortCell(record.allTime, "not recorded yet", onExclude),
+        // One exclude control per ride and row: none here when it is the record's ride.
+        effortCell(
+          record.recent,
+          record.allTime ? "none recently" : "",
+          record.recent?.workoutId === record.allTime?.workoutId ? undefined : onExclude,
+        ),
         formCell(record),
       ]),
     ),
@@ -196,7 +223,7 @@ function targetLine(target: NextTarget | null, idleSince: Date | null): HTMLElem
   ]);
 }
 
-function machineSection(machine: MachineRecords, recentSince: Date): HTMLElement {
+function machineSection(machine: MachineRecords, recentSince: Date, onExclude: OnExclude): HTMLElement {
   const byWindow = new Map(machine.records.map((record) => [record.windowSeconds, record]));
   return el("section", { class: "card recordspage" }, [
     el("figcaption", {}, [
@@ -214,14 +241,58 @@ function machineSection(machine: MachineRecords, recentSince: Date): HTMLElement
         groupTable(
           group.name,
           group.windows.map((seconds) => byWindow.get(seconds)).filter((r): r is WindowRecord => r !== undefined),
+          onExclude,
         ),
       ),
     ),
   ]);
 }
 
+/**
+ * The rides the rider excluded, each with a way to count it again. A ride the
+ * history does not hold (it may be past a truncation) is still listed, by its date.
+ */
+function excludedSection(
+  excluded: RecordsInput["excluded"],
+  workouts: readonly Workout[],
+  onInclude: ((id: string) => void) | undefined,
+): HTMLElement {
+  const byId = new Map(workouts.map((workout) => [workout.id, workout]));
+  const rows = excluded.map((ride) => {
+    const workout = byId.get(ride.id);
+    const name = workout
+      ? [el("a", { href: `/workouts/${workout.routeId}`, text: fullDate(ride.startedAt) }), ` · ${machineLabel(workout.machineType)}`]
+      : [fullDate(ride.startedAt)];
+    const item = el("li", {}, [el("span", {}, name)]);
+    if (onInclude) {
+      const button = el("button", { type: "button", class: "secondary", text: "Count again" });
+      button.addEventListener("click", () => {
+        button.disabled = true;
+        onInclude(ride.id);
+      });
+      item.append(button);
+    }
+    return item;
+  });
+  return el("section", { class: "card excludedrides" }, [
+    el("figcaption", {}, [
+      el("h2", { text: "Excluded rides" }),
+      el("span", { class: "unit", text: `${excluded.length} left out of every record` }),
+      el("p", {
+        class: "note",
+        text: "Excluded because their power looked wrong. Each record above is the best effort without them. Also listed, and clearable, on the extension's options page.",
+      }),
+    ]),
+    el("ul", {}, rows),
+  ]);
+}
+
 export interface RecordsPageOptions {
   onShowStock: () => void;
+  /** Exclude a ride from records. Without it, the page offers no exclusion. */
+  onExclude?: (ride: { id: string; startedAt: Date }) => void;
+  /** Count an excluded ride again. */
+  onInclude?: (id: string) => void;
   /** Present when the page was opened from a ride: a way back to it. */
   onBackToRide?: () => void;
   /** Today. Passed in so the page is a function of its arguments. */
@@ -249,8 +320,13 @@ export function renderRecordsPage(input: Promise<RecordsInput>, options: Records
   // `catch` after `then`, so a failure while drawing the page also lands on the
   // failure message rather than leaving it loading forever.
   input
-    .then(({ workouts, truncated }) => {
-      const machines = machineRecords(workouts, recentSince);
+    .then(({ workouts, truncated, excluded }) => {
+      const excludedIds = new Set(excluded.map((ride) => ride.id));
+      const counted = workouts.filter((workout) => !excludedIds.has(workout.id));
+      const machines = machineRecords(counted, recentSince);
+      const onExclude: OnExclude = options.onExclude
+        ? (point) => options.onExclude!({ id: point.workoutId, startedAt: point.startedAt })
+        : undefined;
       const lede =
         "Your best mean power per duration, from every ride in your history, next to your best since " +
         `${fullDate(recentSince)}. Durations are whole 10-second samples, so 30 s is three readings. ` +
@@ -261,8 +337,9 @@ export function renderRecordsPage(input: Promise<RecordsInput>, options: Records
           ? [el("p", { class: "lede", text: "The API reported more history than it sent, so an older record may be missing." })]
           : []),
         ...(machines.length > 0
-          ? machines.map((machine) => machineSection(machine, recentSince))
+          ? machines.map((machine) => machineSection(machine, recentSince, onExclude))
           : [el("p", { class: "lede", text: "No rides in your history yet." })]),
+        ...(excluded.length > 0 ? [excludedSection(excluded, workouts, options.onInclude)] : []),
       );
     })
     .catch(() => {

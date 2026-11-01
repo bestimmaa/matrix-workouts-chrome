@@ -1,6 +1,7 @@
 import tokens from "../ui/tokens.css?inline";
 import { chromeStrava } from "../background/chromeStrava.js";
 import { APP_KEY, TOKENS_KEY, connection, disconnect, saveApp } from "../background/strava.js";
+import { EXCLUDED_KEY, chromeExclusions, include, loadExcluded } from "../content/exclusions.js";
 
 /**
  * The options page: where the rider's own Strava app is entered, and where everything
@@ -72,13 +73,43 @@ byId<HTMLButtonElement>("disconnect").addEventListener("click", async () => {
   }
 });
 
+/* -------------------------------------------------------- excluded rides */
+
+const excludedList = byId<HTMLUListElement>("excludedList");
+const excludedNone = byId<HTMLElement>("excludedNone");
+const clearExcluded = byId<HTMLButtonElement>("clearExcluded");
+
+/** The rides excluded from records, each with a way to count it again. */
+async function showExcluded(): Promise<void> {
+  const rides = await loadExcluded(chromeExclusions);
+  excludedList.replaceChildren(
+    ...rides.map((ride) => {
+      const item = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = new Date(ride.startedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Count again";
+      button.addEventListener("click", () => void include(chromeExclusions, ride.id));
+      item.append(name, button);
+      return item;
+    }),
+  );
+  excludedNone.hidden = rides.length > 0;
+  clearExcluded.hidden = rides.length === 0;
+}
+
+clearExcluded.addEventListener("click", () => void chromeExclusions.clear());
+
 // The worker writes this storage while the page may be open: the first upload
-// connects, a revoked token disconnects. Every change here re-renders, this page's
-// own saves included.
+// connects, a revoked token disconnects. A ride view excludes a ride. Every change
+// here re-renders, this page's own saves included.
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   if (APP_KEY in changes) void show(true);
   else if (TOKENS_KEY in changes) void show(false);
+  if (EXCLUDED_KEY in changes) void showExcluded();
 });
 
 void show(true);
+void showExcluded();

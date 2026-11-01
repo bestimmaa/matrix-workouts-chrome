@@ -8,6 +8,12 @@ The version history source of truth is git tags in the format `vMAJOR.MINOR.PATC
 
 ### Added
 
+- **Excluding a bad ride from records (experimental).** *Exclude from records* on a
+  ride's records section, or the × beside any record on the records page, takes the
+  whole ride out of every record. The next best effort takes its place. Excluded
+  rides are listed on the records page and on the options page, with a way to count
+  them again. Stored in `chrome.storage.local`: each ride's id, start time and when
+  it was excluded.
 - **Records page (experimental).** Per machine type, each duration's best ever next
   to its best in the last 8 weeks, in short, medium and long groups, with one next
   target. Every number links to its ride. The toolbar icon opens it anywhere off a

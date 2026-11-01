@@ -25,20 +25,35 @@ export interface RideComparison {
   compared: number;
   /** The API said it holds more history than it returned. */
   truncated: boolean;
+  /** The rider excluded this ride from records: it is not judged. */
+  excluded: boolean;
+  /** Earlier rides of the same machine type left out because the rider excluded them. */
+  excludedEarlier: number;
 }
 
 /**
  * Judge `workout` against `history`, counting only rides on the same machine type.
  * Upright and recumbent console watts are not known to be comparable, and a record
- * set on one should not be counted as beaten on the other.
+ * set on one should not be counted as beaten on the other. Rides in `excludedIds`
+ * are left out, so the next best effort stands in for an excluded one.
  */
-export function compareRide(workout: Workout, history: readonly Workout[], truncated = false): RideComparison {
-  const comparable = history.filter((ride) => ride.machineType === workout.machineType);
+export function compareRide(
+  workout: Workout,
+  history: readonly Workout[],
+  truncated = false,
+  excludedIds: ReadonlySet<string> = new Set(),
+): RideComparison {
   const start = workout.startedAt.getTime();
+  const earlier = history.filter(
+    (ride) => ride.machineType === workout.machineType && ride.id !== workout.id && ride.startedAt.getTime() < start,
+  );
+  const counted = earlier.filter((ride) => !excludedIds.has(ride.id));
   return {
-    records: rideRecords(workout, comparable, RECORD_WINDOWS_SECONDS),
-    compared: comparable.filter((ride) => ride.id !== workout.id && ride.startedAt.getTime() < start).length,
+    records: rideRecords(workout, counted, RECORD_WINDOWS_SECONDS),
+    compared: counted.length,
     truncated,
+    excluded: excludedIds.has(workout.id),
+    excludedEarlier: earlier.length - counted.length,
   };
 }
 
@@ -135,16 +150,43 @@ export interface RecordsSection {
   fail(): void;
 }
 
+export interface RecordsSectionOptions {
+  /** Open the records page. Without it, no button to it. */
+  onShowAll?: () => void;
+  /** Exclude this ride from records, or count it again. Without it, no button. */
+  onToggleExcluded?: () => void;
+}
+
 /**
  * The section, in its loading state. The dashboard renders before the history
- * arrives. With `onShowAll`, a filled section ends with a button to the records page.
+ * arrives. A filled section ends with its buttons: to the records page, and to
+ * exclude the ride (or include it again).
  */
-export function recordsSection(onShowAll?: () => void): RecordsSection {
-  const showAll = (): Node[] => {
-    if (!onShowAll) return [];
-    const button = el("button", { type: "button", class: "allrecords", text: "All records" });
-    button.addEventListener("click", onShowAll);
-    return [button];
+export function recordsSection({ onShowAll, onToggleExcluded }: RecordsSectionOptions = {}): RecordsSection {
+  const buttons = (excluded: boolean): Node[] => {
+    const row: HTMLElement[] = [];
+    if (onShowAll) {
+      const button = el("button", { type: "button", class: "allrecords", text: "All records" });
+      button.addEventListener("click", onShowAll);
+      row.push(button);
+    }
+    if (onToggleExcluded) {
+      const button = el("button", {
+        type: "button",
+        class: "exclude secondary",
+        text: excluded ? "Count in records again" : "Exclude from records",
+        title: excluded
+          ? "Count this ride in records again. Its efforts can be records once more."
+          : "If this ride's power looks wrong, exclude it: none of its efforts count as a record, " +
+            "and the next best takes their place. Undo any time, here or on the options page.",
+      });
+      button.addEventListener("click", () => {
+        button.disabled = true;
+        onToggleExcluded();
+      });
+      row.push(button);
+    }
+    return row.length ? [el("div", { class: "recordbuttons" }, row)] : [];
   };
 
   const root = el("section", { class: "card records-card", "aria-live": "polite" }, [
@@ -155,13 +197,26 @@ export function recordsSection(onShowAll?: () => void): RecordsSection {
   return {
     root,
     show(comparison) {
+      if (comparison.excluded) {
+        root.replaceChildren(
+          caption(METHOD, "excluded"),
+          el("p", {
+            text:
+              "You excluded this ride from records, so it is not compared, and none of its " +
+              "efforts count as a record anywhere.",
+          }),
+          ...buttons(true),
+        );
+        return;
+      }
       const range =
         `against ${comparison.compared} earlier ride${comparison.compared === 1 ? "" : "s"}` +
+        (comparison.excludedEarlier > 0 ? ` (${comparison.excludedEarlier} excluded)` : "") +
         (comparison.truncated ? ", history incomplete" : "");
       const note = comparison.truncated
         ? `${METHOD}. The API reported more history than it sent, so an older best may be missing.`
         : METHOD;
-      root.replaceChildren(caption(note, range), ...body(comparison), ...showAll());
+      root.replaceChildren(caption(note, range), ...body(comparison), ...buttons(false));
     },
     fail() {
       root.replaceChildren(

@@ -85,4 +85,27 @@ describe("the options page", () => {
     expect(field("clientId").value).toBe("");
     expect(field("clientSecret").value).toBe("");
   });
+
+  it("lists excluded rides, counts one again, and clears the rest", async () => {
+    expect(document.getElementById("excludedNone")!.hidden).toBe(false);
+    await chrome.storage.local.set({
+      excludedRides: [
+        { id: "a", startedAt: "2026-09-01T07:00:00Z", excludedAt: "2026-11-01T12:00:00Z" },
+        { id: "b", startedAt: "2026-09-02T07:00:00Z", excludedAt: "2026-11-01T12:00:00Z" },
+      ],
+    });
+    await settle();
+    const items = () => [...document.querySelectorAll("#excludedList li")];
+    expect(items()).toHaveLength(2);
+    expect(document.getElementById("excludedNone")!.hidden).toBe(true);
+
+    items()[0]!.querySelector("button")!.click();
+    await settle();
+    expect(items()).toHaveLength(1);
+
+    document.getElementById("clearExcluded")!.click();
+    await settle();
+    expect(items()).toHaveLength(0);
+    expect(store.has("excludedRides")).toBe(false);
+  });
 });

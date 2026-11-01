@@ -19,8 +19,12 @@ const HOST_ID = "full-matrix-workouts-root";
  * view that was working.
  */
 export interface Surface {
-  /** Replace the contents of the sheet. */
-  render(content: Node): void;
+  /**
+   * Replace the contents of the sheet. It scrolls back to the top unless
+   * `keepScroll`: a page re-rendered in place, after a rider's own action on it,
+   * should not jump.
+   */
+  render(content: Node, options?: { keepScroll?: boolean }): void;
   /** Cover the page. */
   expand(): void;
   /** Hand the page back, leaving the pill to come back with. */
@@ -70,9 +74,10 @@ export function createSurface(options: SurfaceOptions = {}): Surface {
   };
 
   const surface: Surface = {
-    render(content: Node) {
+    render(content: Node, options?: { keepScroll?: boolean }) {
+      const top = sheet.scrollTop;
       sheet.replaceChildren(content);
-      sheet.scrollTop = 0;
+      sheet.scrollTop = options?.keepScroll ? top : 0;
     },
 
     expand() {
