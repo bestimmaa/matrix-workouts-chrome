@@ -8,6 +8,15 @@ The version history source of truth is git tags in the format `vMAJOR.MINOR.PATC
 
 ### Added
 
+- **Power-skills star on the records page (experimental).** One spoke per duration
+  (30 s to 60 min) for each machine type, with the last 8 weeks filled, in two
+  modes. *vs your best* shows recent bests as a share of your all-time records.
+  *vs ceiling* shows them, and your all-time best, as a share of a ceiling: 90 % of
+  the Allen and Coggan world-class watts per kilo, times your weight. A spoke past
+  the ceiling turns orange. Each point links to its ride. Weight and sex come from
+  your Matrix profile, read each time and not stored, or from what you type on the
+  records page or the options page, which is stored and clearable there.
+
 - **Milestones and your own targets (experimental).** A milestone every 25 W at
   each duration, dated to the first ride that held it, under each machine's records.
   You can also set your own target per duration, which is reached by the first ride

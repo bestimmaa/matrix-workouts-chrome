@@ -3,6 +3,7 @@ import { chromeStrava } from "../background/chromeStrava.js";
 import { APP_KEY, TOKENS_KEY, connection, disconnect, saveApp } from "../background/strava.js";
 import { EXCLUDED_KEY, chromeExclusions, include, loadExcluded } from "../content/exclusions.js";
 import { TARGETS_KEY, chromeTargets, clearTarget, loadTargets } from "../content/targets.js";
+import { RIDER_KEY, chromeRider, loadStoredRider, saveRider } from "../content/rider.js";
 import { machineLabel } from "../ui/format.js";
 import { windowLabel } from "../ui/records.js";
 import { el } from "../ui/svg.js";
@@ -134,6 +135,37 @@ const showTargets = storedList(
   () => chromeTargets.clear(),
 );
 
+/* ------------------------------------------------------- the power ceiling */
+
+const riderForm = byId<HTMLFormElement>("riderForm");
+const riderWeight = byId<HTMLInputElement>("riderWeight");
+const riderSex = byId<HTMLSelectElement>("riderSex");
+const riderSaved = byId<HTMLElement>("riderSaved");
+const clearRider = byId<HTMLButtonElement>("clearRider");
+
+/** What is stored, in the form. Empty means the records page reads the profile. */
+async function showRider(): Promise<void> {
+  const stored = await loadStoredRider(chromeRider);
+  riderWeight.value = stored ? String(stored.weightKg) : "";
+  riderSex.value = stored?.sex ?? "male";
+  clearRider.hidden = !stored;
+}
+
+riderForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await saveRider(chromeRider, { weightKg: Number(riderWeight.value), sex: riderSex.value === "female" ? "female" : "male" }, new Date());
+    riderSaved.textContent = " Saved.";
+  } catch {
+    riderSaved.textContent = " A weight in kg, 30 to 200.";
+  }
+});
+
+clearRider.addEventListener("click", async () => {
+  await chromeRider.clear();
+  riderSaved.textContent = " Cleared. The records page uses your Matrix profile.";
+});
+
 // The worker writes this storage while the page may be open: the first upload
 // connects, a revoked token disconnects. A ride view excludes a ride. Every change
 // here re-renders, this page's own saves included.
@@ -143,8 +175,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
   else if (TOKENS_KEY in changes) void show(false);
   if (EXCLUDED_KEY in changes) void showExcluded();
   if (TARGETS_KEY in changes) void showTargets();
+void showRider();
+  if (RIDER_KEY in changes) void showRider();
 });
 
 void show(true);
 void showExcluded();
 void showTargets();
+void showRider();

@@ -222,6 +222,28 @@ records section. Decided with the rider on 1 Nov 2026:
 - **Every comparison is on displayed watts.** A step or a target is reached when
   the effort rounds to it, the same rule as for records.
 
+Also built, **experimental**: the **power-skills star** (`src/ui/star.ts`) on the
+records page, one per machine type. Decided with the rider on 1 Nov 2026, after
+mockups of both modes on their real history:
+
+- **One spoke per duration, not one value per skill.** Strava's Power Skills folds
+  durations into three skills; we keep the six durations and use the page's own
+  short, medium and long as sector labels.
+- **Two modes.** *vs your best*: the last 8 weeks as a share of the all-time record,
+  centre at 50 %. With a short history it is a full hexagon, because every record is
+  recent; it starts saying something once a record is older than 8 weeks. *vs
+  ceiling*: the last 8 weeks filled and the all-time best dashed, both as a share of
+  core's ceiling (90 % of the Allen and Coggan world-class W/kg times the rider's
+  weight), centre at 0 %. The rider asked for this one: something to aim at beyond
+  their own best. It opens in ceiling mode when weight and table are known.
+- **The ceiling is labelled as a target, not a measurement, under the chart every
+  time.** It is the one number on the page that is not the rider's own. Records,
+  milestones and targets stay the rider's own.
+- **Weight and sex come from the site's profile, read each time and never stored**
+  (core's `readRider`), unless the rider types them. Then they are stored and shown on
+  the options page. Neither is guessed: if the profile's encoding is unclear, the
+  page asks.
+
 The ride's records section lists a target reached first (it is the rider's own
 number), then records, then the highest milestone the ride earned per duration.
 These are different accomplishments, so they stay on separate lines.
@@ -638,18 +660,21 @@ This handles personal health data.
   `matches` pattern, which needs no host permission. `orion.jfit.co` answers 403 and
   must not be added.
 - No remote code. MV3 forbids it and so do we.
-- Anything written to `chrome.storage` must be user-visible and clearable. Three
+- Anything written to `chrome.storage` must be user-visible and clearable. Four
   things are:
   - the rider's Strava app and tokens (see "Strava");
   - the rides excluded from records (`excludedRides`, see
     `src/content/exclusions.ts`): each ride's id, start time and when it was
     excluded;
   - the rider's own targets (`recordTargets`, see `src/content/targets.ts`): the
-    number, its duration and machine type, and when it was set.
+    number, its duration and machine type, and when it was set;
+  - the weight and table for the power ceiling, only when the rider types them
+    (`ceilingRider`, see `src/content/rider.ts`). What the site's profile says is
+    read from its session each time and never copied here.
 
   None of them holds anything from a ride itself. Milestones and whether a target
   was reached are worked out from the history and never stored. The options page
-  lists all three and clears each.
+  lists all four and clears each.
 - **The JSON export is a local download and must stay one.** It carries the
   upstream record verbatim, ids and all, and it is never what goes to Strava. The
   button's tooltip says nothing is uploaded before it is pressed, and a
