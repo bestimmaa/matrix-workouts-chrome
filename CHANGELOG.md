@@ -8,6 +8,14 @@ The version history source of truth is git tags in the format `vMAJOR.MINOR.PATC
 
 ### Added
 
+- **Records (experimental).** Each ride shows, under its stat tiles, any new best
+  mean power at 30 s, 1, 5, 10, 20 or 60 min against earlier rides on the same
+  machine type, with the record it beat and a link to that ride. It also shows a
+  first effort at a duration, or the nearest record when nothing was won. Opening a
+  ride now fetches the full history in the background, once per tab, to compare
+  against. It stays in memory as before. Built on `rideRecords` from
+  `matrix-workouts-core`'s `analysis/`.
+
 - The view names a Hills ride (console program 8) "Hills" in its header, where it
   would have read "Program 8". Core knows the mode from 0.6.0.
 - **Send to Strava** in the view's header: uploads the ride's FIT file to the

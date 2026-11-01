@@ -152,11 +152,27 @@ in, uploads and waits for Strava to finish (`src/background/strava.ts`), and
 `src/options/` is where the rider's Strava app is entered. See "Strava" under
 Privacy.
 
-Not built: anything that uses history in aggregate (trends across rides, a power
-curve, sprint-to-sprint comparison). The client returns the whole list; only the one
-requested workout is currently rendered from it. `npx matrix-workouts-history` puts
-that whole list on disk, and the MCP server is where cross-ride analysis is going
-first — see TODO.md.
+Also built, **experimental**: **Records**, the first view that uses history in
+aggregate. Under the stat tiles, each ride says what it did against the rider's
+earlier rides on the same machine type: a new best per duration (30 s to 60 min)
+with the record it beat, a first effort at a duration, or, when nothing was won, the
+nearest record and how many watts short of it. The numbers come from core's
+`rideRecords` (see "Cross-ride analysis" in the core repo's AGENTS.md);
+`src/ui/records.ts` only picks the durations, filters by machine type and draws the
+result. This follows the "personal records" direction in the
+[gamification notes](https://app.notion.com/p/39552e0a892e4826ba842765094e29f5):
+no score, no level, no benchmark.
+
+**Opening a ride now fetches the full history**, once per tab, in the background.
+The ride renders at once and the records section fills in when the history arrives.
+A record cannot be judged against the site's cached week. The request is the same
+GET to `apollo.jfit.co` that *Load full history* makes, it is made only after the
+rider has opened the view, and its answer stays in memory like any other history.
+`ensureHistory` in `src/content/main.ts` holds the one request both paths share; a
+failed request is forgotten so the next ride asks again.
+
+Not built: the rest of the cross-ride views (a records page over the whole history,
+trends, sprint-to-sprint comparison). See TODO.md.
 
 **Scope: the indoor bike only, and this is now enforced rather than merely
 intended.** Both bike types (upright and recumbent) are covered by fixtures and are
@@ -557,7 +573,9 @@ This handles personal health data.
   the token cannot appear in a thrown message. **No fixture in this repo carries a
   real token, and none ever should.**
 - Fetched history lives in a module variable for the life of the tab and is never
-  written to `chrome.storage`. It is health data and it is one request away.
+  written to `chrome.storage`. It is health data and it is one request away. That
+  request is made automatically once the rider opens the view on a ride (for the
+  records section), never on navigation alone.
 - `host_permissions` is exactly `https://apollo.jfit.co/*` plus Strava's upload,
   activity and OAuth paths — nothing else, and no `<all_urls>`. The Strava grant names the
   paths, not the host, so no other Strava API is reachable. The toolbar action uses **`activeTab`**, not a host permission for

@@ -17,6 +17,7 @@ import {
 import { exportButton, shareMenu, stravaButton, type StravaOutcome } from "./actions.js";
 import { clock, hms, km, longDate, machineLabel, modeLabel } from "./format.js";
 import { icon } from "./icons.js";
+import { recordsSection, type RideComparison } from "./records.js";
 import { el, svg } from "./svg.js";
 
 export interface DashboardOptions {
@@ -24,6 +25,12 @@ export interface DashboardOptions {
   onShowStock: () => void;
   /** Upload this ride to the rider's Strava. Without it there is no Strava button. */
   sendToStrava?: () => Promise<StravaOutcome>;
+  /**
+   * This ride against the rider's earlier ones. A promise, because it waits on the
+   * full history: the dashboard renders at once and the section fills in when the
+   * history arrives. Without it there is no records section.
+   */
+  records?: Promise<RideComparison>;
 }
 
 /** Build the whole replacement view for one workout. */
@@ -40,6 +47,12 @@ export function renderDashboard(workout: Workout, options: DashboardOptions): HT
     tiles(workout),
     ...(panels.length ? [] : [emptyState()]),
   ]);
+
+  if (options.records) {
+    const section = recordsSection();
+    options.records.then(section.show, section.fail);
+    page.append(section.root);
+  }
 
   if (panels.length) {
     const consoleRow = readoutConsole(panels, workout.durationSeconds);

@@ -2,7 +2,14 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { PERSIST_KEY } from "matrix-workouts-core";
+import { PERSIST_KEY, loadCachedWorkouts } from "matrix-workouts-core";
+
+/*
+ * The history request goes through the service worker, which is not here. Its
+ * stand-in answers with the cached rides, and counts how often it is asked.
+ */
+const loadHistory = vi.hoisted(() => vi.fn());
+vi.mock("./history.js", () => ({ loadHistory }));
 
 /*
  * The content script's lifecycle: where the pill goes, when the sheet is filled, and
@@ -33,6 +40,11 @@ function withTreadmill(id: string): string {
 
 let toggle: () => void;
 
+/** Let the history promise and the section's `then` run. */
+const settle = async () => {
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+};
+
 beforeAll(async () => {
   localStorage.setItem(PERSIST_KEY, persistRoot);
   vi.useFakeTimers();
@@ -62,6 +74,11 @@ const showStock = () => sheet().querySelector<HTMLButtonElement>(".back")!.click
 
 beforeEach(() => {
   localStorage.setItem(PERSIST_KEY, persistRoot);
+  loadHistory.mockImplementation(async () => ({
+    workouts: loadCachedWorkouts(localStorage),
+    truncated: false,
+    skipped: 0,
+  }));
   go("/");
   expect(host()).toBeNull();
 });
@@ -117,6 +134,21 @@ describe("the content script", () => {
     // the page back here removes the surface rather than collapsing to one.
     showStock();
     expect(host()).toBeNull();
+  });
+
+  it("fetches the history once per tab and fills each ride's records from it", async () => {
+    go(`/workouts/${SPRINT}`);
+    pill().click();
+    const records = () => sheet().querySelector(".records-card")?.textContent ?? "";
+    await settle();
+    expect(records()).toMatch(/against \d+ earlier rides/);
+
+    go(`/workouts/${VIRTUAL}`);
+    expect(records()).toContain("Loading your history");
+    await settle();
+    expect(records()).toMatch(/against \d+ earlier rides/);
+    // Rides were opened in earlier tests as well: one request has served them all.
+    expect(loadHistory).toHaveBeenCalledTimes(1);
   });
 
   it("gives a ride on another machine no pill, and no pill on the way out either", () => {
