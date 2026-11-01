@@ -8,6 +8,11 @@ The version history source of truth is git tags in the format `vMAJOR.MINOR.PATC
 
 ### Added
 
+- **Records page (experimental).** Per machine type, each duration's best ever next
+  to its best in the last 8 weeks, in short, medium and long groups, with one next
+  target. Every number links to its ride. The toolbar icon opens it anywhere off a
+  ride, where it used to say "Open a workout first". The ride's records section opens
+  it with *All records*.
 - **Records (experimental).** Each ride shows, under its stat tiles, any new best
   mean power at 30 s, 1, 5, 10, 20 or 60 min against earlier rides on the same
   machine type, with the record it beat and a link to that ride. It also shows a

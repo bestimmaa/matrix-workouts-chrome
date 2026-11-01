@@ -13,6 +13,7 @@ import { messageType } from "../background/message.js";
 import { renderDashboard, topBar } from "../ui/dashboard.js";
 import { machineLabel } from "../ui/format.js";
 import { compareRide, type RideComparison } from "../ui/records.js";
+import { renderRecordsPage, type RecordsInput } from "../ui/recordsPage.js";
 import { el } from "../ui/svg.js";
 import { loadHistory } from "./history.js";
 import { createSurface, type Surface } from "./mount.js";
@@ -147,9 +148,31 @@ function showWorkout(view: Surface, id: string, workout: Workout): void {
       onShowStock: showStock,
       sendToStrava: () => sendToStrava(workout),
       records: recordsFor(workout),
+      onShowRecords: () => showRecords(view, () => showWorkout(view, id, workout)),
     }),
   );
   renderedId = id;
+}
+
+/**
+ * The records page, over the whole history. Reached from a ride's records section,
+ * with a way back to that ride, or from the toolbar icon anywhere else on the site.
+ * Rides on machines this extension does not handle are left out, as everywhere else.
+ */
+function showRecords(view: Surface, backToRide?: () => void): void {
+  const input: Promise<RecordsInput> = ensureHistory().then((result) => ({
+    workouts: result.workouts.filter((workout) => isSupportedMachine(workout.machineType)),
+    truncated: result.truncated,
+  }));
+  view.render(
+    renderRecordsPage(input, {
+      onShowStock: showStock,
+      ...(backToRide ? { onBackToRide: backToRide } : {}),
+      now: new Date(),
+    }),
+  );
+  // Not a workout: a pill press on a ride route brings the ride back.
+  renderedId = null;
 }
 
 interface ProblemOptions {
@@ -277,14 +300,9 @@ function openView(): void {
   const id = workoutIdFromPath(location.pathname);
 
   if (id === null) {
-    view.render(
-      problem(
-        "Open a workout first",
-        "This view replaces the workout detail page. Open any workout from the list, " +
-          "then use this button again there.",
-      ),
-    );
-    renderedId = null;
+    // Off a ride, the toolbar icon opens the records page: the one view here that
+    // is not about a single ride.
+    showRecords(view);
   } else if (id !== renderedId) {
     renderWorkout(view, id);
   }

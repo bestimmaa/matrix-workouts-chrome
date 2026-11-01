@@ -171,8 +171,21 @@ rider has opened the view, and its answer stays in memory like any other history
 `ensureHistory` in `src/content/main.ts` holds the one request both paths share; a
 failed request is forgotten so the next ride asks again.
 
-Not built: the rest of the cross-ride views (a records page over the whole history,
-trends, sprint-to-sprint comparison). See TODO.md.
+Also built, **experimental**: the **records page** (`src/ui/recordsPage.ts`). For
+each machine type it shows every duration's best ever next to its best in the last
+8 weeks, grouped as short (30 s, 1 min), medium (5, 10 min) and long (20, 60 min)
+efforts, with one next target above them. Every number links to its ride. Two ways
+in: the toolbar icon anywhere off a ride, where it used to say "Open a workout
+first", and the ride's records section, whose *All records* button opens the page
+with a *Back to ride*. It reads the same in-memory history as everything else.
+
+How the next target is picked (`nextTarget`), so it is never arbitrary: the old
+record (set before the 8 weeks) that recent form is closest to; else the shortest
+duration never ridden; else the shortest record with no recent effort at that
+length. When a machine has no rides in the 8 weeks, the page says that instead.
+
+Not built: trends, sprint-to-sprint comparison, and anything stored (targets,
+milestones, excluding a bad ride). See TODO.md.
 
 **Scope: the indoor bike only, and this is now enforced rather than merely
 intended.** Both bike types (upright and recumbent) are covered by fixtures and are
