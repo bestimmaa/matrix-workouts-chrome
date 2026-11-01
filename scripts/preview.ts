@@ -19,6 +19,7 @@ g.window = dom.window;
 
 const { toWorkout } = await import("matrix-workouts-core");
 const { renderDashboard } = await import("../src/ui/dashboard.js");
+const { compareRide } = await import("../src/ui/records.js");
 
 const styles = ["tokens.css", "styles.css"]
   .map((file) => readFileSync(resolve(process.cwd(), "src/ui", file), "utf8"))
@@ -32,12 +33,24 @@ const ids = process.argv.slice(2).length
 
 mkdirSync(resolve(process.cwd(), "preview"), { recursive: true });
 
+// Every fixture stands in for the rider's history, so the records section has
+// earlier rides to compare against, the way the full history gives it in the tab.
+const history = readdirSync(resolve(process.cwd(), "fixtures"))
+  .filter((f) => f.startsWith("raw-") && f.endsWith(".json"))
+  .map((f) => toWorkout(JSON.parse(readFileSync(resolve(process.cwd(), "fixtures", f), "utf8")) as Record<string, unknown>));
+
 for (const id of ids) {
   const raw = JSON.parse(readFileSync(resolve(process.cwd(), `fixtures/raw-${id}.json`), "utf8"));
   const workout = toWorkout(raw as Record<string, unknown>);
   // The header as the extension mounts it, Strava button included. Nothing here can
   // upload, and the button is inert in a static file anyway.
-  const view = renderDashboard(workout, { onShowStock: () => {}, sendToStrava: async () => ({ kind: "failed" }) });
+  const view = renderDashboard(workout, {
+    onShowStock: () => {},
+    sendToStrava: async () => ({ kind: "failed" }),
+    records: Promise.resolve(compareRide(workout, history)),
+  });
+  // Let the records section fill in before the DOM is serialized.
+  await new Promise((done) => setTimeout(done, 0));
 
   const html = `<!doctype html>
 <html lang="en" data-theme="${process.env["THEME"] ?? ""}">

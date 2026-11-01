@@ -6,11 +6,13 @@ import {
   loadCachedWorkouts,
   PERSIST_KEY,
   WorkoutParseError,
+  type HistoryResult,
   type Workout,
 } from "matrix-workouts-core";
 import { messageType } from "../background/message.js";
 import { renderDashboard, topBar } from "../ui/dashboard.js";
 import { machineLabel } from "../ui/format.js";
+import { compareRide, type RideComparison } from "../ui/records.js";
 import { el } from "../ui/svg.js";
 import { loadHistory } from "./history.js";
 import { createSurface, type Surface } from "./mount.js";
@@ -40,6 +42,82 @@ let renderedId: string | null = null;
  * is the user's health data and it is one request away whenever it is wanted again.
  */
 let history: Workout[] | null = null;
+/**
+ * The one history request for this tab, shared by everything that wants it: the
+ * records section on every rendered ride and the *Load full history* offer. A failed
+ * request is forgotten, so the next ride opened asks again.
+ */
+let historyRequest: Promise<HistoryResult> | null = null;
+
+/**
+ * The history, fetched once per tab and fetched again only when it is visibly out of
+ * date: the site's own cache holds a ride the fetched history does not, because the
+ * rider has ridden since. Without that, a new ride would be judged a record on its
+ * own page and be missing from the records page in the same tab.
+ */
+function ensureHistory(): Promise<HistoryResult> {
+  return requestHistory().then((result) => {
+    const missing = cachedRidesMissingFrom(result);
+    // Once per set of missing rides: if the API does not return a ride the cache
+    // holds, asking again on every ride opened would not change that.
+    if (!missing || missing === refetchedFor) return result;
+    refetchedFor = missing;
+    historyRequest = null;
+    return requestHistory();
+  });
+}
+
+/** The cached rides the history lacks, as one key, or `""` when it lacks none. */
+let refetchedFor = "";
+
+function cachedRidesMissingFrom(result: HistoryResult): string {
+  try {
+    const held = new Set(result.workouts.map((workout) => workout.id));
+    return loadCachedWorkouts(localStorage)
+      .map((workout) => workout.id)
+      .filter((id) => !held.has(id))
+      .sort()
+      .join(",");
+  } catch {
+    // An unreadable cache says nothing about the history: keep what we have.
+    return "";
+  }
+}
+
+function requestHistory(): Promise<HistoryResult> {
+  if (!historyRequest) {
+    // Through a resolved promise, because `readCredentials` throws synchronously on
+    // a missing token, and that must reach the records section as a failure rather
+    // than take down the render of the ride it sits on.
+    historyRequest = Promise.resolve()
+      .then(() => loadHistory(localStorage))
+      .then(
+      (result) => {
+        history = result.workouts;
+        return result;
+      },
+      (error: unknown) => {
+        historyRequest = null;
+        throw error;
+      },
+    );
+  }
+  return historyRequest;
+}
+
+/**
+ * This ride against the rider's earlier ones. Fetches the full history the first
+ * time a ride is opened in a tab: a record cannot be judged against the site's
+ * cached week. That is one GET to the API the site itself uses, made only once the
+ * rider has opened the view, and the answer stays in memory like any other history.
+ */
+function recordsFor(workout: Workout): Promise<RideComparison> {
+  return ensureHistory().then((result) => {
+    // The ride on screen may be newer than the fetched history (recorded since);
+    // judging it needs only the rides before it, which the history does hold.
+    return compareRide(workout, result.workouts, result.truncated);
+  });
+}
 
 function ensureSurface(): Surface {
   if (!surface) surface = createSurface({ onOpen: openView });
@@ -99,7 +177,13 @@ function shell(title: string, children: (Node | string)[], onBack: () => void): 
  */
 function showWorkout(view: Surface, id: string, workout: Workout): void {
   if (!isSupportedMachine(workout.machineType)) return outOfScope(view, workout.machineType);
-  view.render(renderDashboard(workout, { onShowStock: showStock, sendToStrava: () => sendToStrava(workout) }));
+  view.render(
+    renderDashboard(workout, {
+      onShowStock: showStock,
+      sendToStrava: () => sendToStrava(workout),
+      records: recordsFor(workout),
+    }),
+  );
   renderedId = id;
 }
 
@@ -153,11 +237,10 @@ function offerHistory(view: Surface, id: string): void {
     button.disabled = true;
     button.textContent = "Loading…";
 
-    loadHistory(localStorage)
+    ensureHistory()
       .then((result) => {
-        history = result.workouts;
         if (!stillHere()) return;
-        const workout = findWorkout(history, id);
+        const workout = findWorkout(result.workouts, id);
         if (workout) return showWorkout(view, id, workout);
         view.render(
           problem(

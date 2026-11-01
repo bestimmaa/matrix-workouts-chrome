@@ -27,6 +27,12 @@ Then `chrome://extensions` → Developer mode → *Load unpacked* → `dist/`.
 Open any ride at `/workouts/:id` and use the pill the extension adds. After a
 rebuild, reload the extension card **and** the tab.
 
+Under the ride's stat tiles, **Records** says what the ride did against your earlier
+rides: a new best mean power at 30 s, 1, 5, 10, 20 or 60 min, with the record it beat
+and a link to that ride. To judge this, opening a ride fetches your full history
+once per tab, from the same API the site uses. It stays in memory and is never
+stored. *Experimental.*
+
 The view's header has **Share image**, which saves the ride as a picture to post — a
 9:16 story or a 4:5 feed post — and **Export JSON**, which saves the whole record.
 Both are downloads made by your browser; nothing is uploaded.

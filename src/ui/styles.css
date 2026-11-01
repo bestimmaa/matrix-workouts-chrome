@@ -494,3 +494,14 @@ footer { color: var(--ink-3); font-family: var(--alt); font-size: 13px; line-hei
   .sprints { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .sprint .bar { height: 110px; }
 }
+
+/* ---- records: this ride against the rider's earlier ones ---- */
+.records { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.records li { font-family: var(--alt); font-size: 14px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.records li strong { color: var(--ink); margin-right: 4px; }
+.records li::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 9px; background: var(--machine); }
+.records li.first::before { background: transparent; outline: 2px solid var(--machine); outline-offset: -2px; }
+.records-card p { font-family: var(--alt); font-size: 14px; color: var(--ink-2); margin: 10px 0 0; }
+.records-card p.note { font-size: 11.5px; color: var(--ink-3); margin: 0 0 2px 18px; }
+.records-card .pending { color: var(--ink-3); }
+.records-card a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
