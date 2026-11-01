@@ -18,6 +18,8 @@ import { el } from "../ui/svg.js";
 import { loadHistory } from "./history.js";
 import { chromeExclusions, exclude, include, loadExcluded } from "./exclusions.js";
 import { createSurface, type Surface } from "./mount.js";
+import { chromeTargets, clearTarget, loadTargets, setTarget } from "./targets.js";
+import type { Target } from "../ui/milestones.js";
 import { observeLocation, workoutIdFromPath } from "./route.js";
 import { sendToStrava } from "./strava.js";
 
@@ -79,11 +81,16 @@ function ensureHistory(): Promise<HistoryResult> {
  * rider has opened the view, and the answer stays in memory like any other history.
  */
 function recordsFor(workout: Workout): Promise<RideComparison> {
-  return Promise.all([ensureHistory(), excludedIds()]).then(([result, excluded]) => {
+  return Promise.all([ensureHistory(), excludedIds(), targets()]).then(([result, excluded, own]) => {
     // The ride on screen may be newer than the fetched history (recorded since);
     // judging it needs only the rides before it, which the history does hold.
-    return compareRide(workout, result.workouts, result.truncated, excluded);
+    return compareRide(workout, result.workouts, { truncated: result.truncated, excludedIds: excluded, targets: own });
   });
+}
+
+/** The rider's own targets, read fresh for the same reason as the exclusions. */
+function targets(): Promise<Target[]> {
+  return loadTargets(chromeTargets).then((stored) => stored.map((t) => ({ ...t, setAt: new Date(t.setAt) })));
 }
 
 /**
@@ -180,11 +187,12 @@ function showWorkout(view: Surface, id: string, workout: Workout, keepScroll = f
  * Rides on machines this extension does not handle are left out, as everywhere else.
  */
 function showRecords(view: Surface, backToRide?: () => void, keepScroll = false): void {
-  const input: Promise<RecordsInput> = Promise.all([ensureHistory(), loadExcluded(chromeExclusions)]).then(
-    ([result, excluded]) => ({
+  const input: Promise<RecordsInput> = Promise.all([ensureHistory(), loadExcluded(chromeExclusions), targets()]).then(
+    ([result, excluded, own]) => ({
       workouts: result.workouts.filter((workout) => isSupportedMachine(workout.machineType)),
       truncated: result.truncated,
       excluded: excluded.map((ride) => ({ id: ride.id, startedAt: new Date(ride.startedAt) })),
+      targets: own,
     }),
   );
   // Re-render in place after an exclusion, unless the sheet has moved on since.
@@ -196,6 +204,8 @@ function showRecords(view: Surface, backToRide?: () => void, keepScroll = false)
     ...(backToRide ? { onBackToRide: backToRide } : {}),
     onExclude: (ride) => void exclude(chromeExclusions, ride, new Date()).then(again, again),
     onInclude: (id) => void include(chromeExclusions, id).then(again, again),
+    onSetTarget: (target) => void setTarget(chromeTargets, target, new Date()).then(again, again),
+    onClearTarget: (slot) => void clearTarget(chromeTargets, slot).then(again, again),
     now: new Date(),
   });
   view.render(page, { keepScroll });

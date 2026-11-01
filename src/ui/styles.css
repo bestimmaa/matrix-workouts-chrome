@@ -557,3 +557,44 @@ button.secondary:disabled { color: var(--ink-3); }
 .excludedrides li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--grid); font-family: var(--alt); color: var(--ink-2); }
 .excludedrides li button { padding: 6px 12px; font-size: 12px; }
 .excludedrides a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+
+/* ---- milestones and the rider's own targets ---- */
+.milestones { margin-top: 22px; }
+.milestones h3 {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 6px;
+  padding-bottom: 6px;
+  border-bottom: 3px solid var(--machine);
+}
+.milestones .explain, .milestones .changes { font-family: var(--alt); font-size: 12.5px; color: var(--ink-3); margin: 0 0 6px; }
+.milestones .changes { color: var(--ink-2); }
+.milestonetable td { white-space: normal; }
+.milestonetable .steps { display: flex; flex-wrap: wrap; gap: 4px 14px; font-family: var(--mono); color: var(--ink-2); }
+.milestonetable .earlier { font-family: var(--alt); color: var(--ink-3); }
+.milestonetable .next { font-family: var(--alt); color: var(--ink-3); }
+.milestonetable .owntarget { font-family: var(--alt); color: var(--ink-2); }
+.milestonetable .owntarget strong { color: var(--ink); }
+.milestonetable a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.linkbutton, .linkbutton:hover {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  padding: 3px 9px;
+  font-size: 11px;
+  margin-left: 4px;
+}
+.linkbutton:disabled { color: var(--ink-3); background: transparent; }
+.targetform { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.targetform input { width: 72px; padding: 4px 6px; font: 13px var(--mono); border: 1px solid var(--rule); border-radius: 0; background: var(--plane); color: var(--ink); }
+.formerror { color: var(--brand); font-size: 12px; }
+.records li.milestone::before { background: transparent; outline: 2px solid var(--ink-3); outline-offset: -2px; }
+.records li.target::before { background: var(--brand); }
+@media (max-width: 700px) {
+  .milestonetable tr { display: grid; grid-template-columns: 60px 1fr; }
+  .milestonetable td { grid-column: 2; padding-top: 2px; padding-bottom: 2px; }
+  .milestonetable tbody th { grid-row: span 3; }
+  .milestonetable tr + tr { border-top: 1px solid var(--grid); }
+}

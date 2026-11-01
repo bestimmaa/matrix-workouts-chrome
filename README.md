@@ -35,7 +35,9 @@ stored. **All records**, or the toolbar icon anywhere off a ride, opens the reco
 page: every duration's best ever next to your best in the last 8 weeks, with one next
 target. If a ride's power looks wrong, **Exclude from records** (or the × beside a
 record) leaves it out of every record. The options page lists excluded rides, and can
-count them all again. *Experimental.*
+count them all again. Under each machine's records, **milestones** mark every 25 W
+you have held at each duration, and you can **set your own target** per duration;
+the ride that reaches it says so. *Experimental.*
 
 The view's header has **Share image**, which saves the ride as a picture to post — a
 9:16 story or a 4:5 feed post — and **Export JSON**, which saves the whole record.

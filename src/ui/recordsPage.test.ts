@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { toWorkout, type Workout, type WindowRecord } from "matrix-workouts-core";
-import { EFFORT_GROUPS, machineRecords, nextTarget, renderRecordsPage } from "./recordsPage.js";
+import { EFFORT_GROUPS, machineRecords, suggestNext, renderRecordsPage } from "./recordsPage.js";
 import { RECORD_WINDOWS_SECONDS } from "./records.js";
 
 const FIXTURES = resolve(process.cwd(), "fixtures");
@@ -43,9 +43,9 @@ describe("machineRecords", () => {
   });
 });
 
-describe("nextTarget", () => {
+describe("suggestNext", () => {
   it("picks the old record that recent form is closest to", () => {
-    const target = nextTarget(
+    const target = suggestNext(
       recordsOf([
         ride("old", "2026-08-01", 300, 360),
         // Recent: 95% of the record for 30 s and 1 min (the only durations it covers).
@@ -60,12 +60,12 @@ describe("nextTarget", () => {
   });
 
   it("asks for a first effort when a duration was never ridden and every record is recent", () => {
-    const target = nextTarget(recordsOf([ride("new", "2026-09-10", 200, 6)]));
+    const target = suggestNext(recordsOf([ride("new", "2026-09-10", 200, 6)]));
     expect(target).toEqual({ kind: "first", windowSeconds: 300 });
   });
 
   it("suggests revisiting a record with no recent effort at that duration", () => {
-    const target = nextTarget(
+    const target = suggestNext(
       recordsOf([ride("long", "2026-08-01", 200, 361), ride("short", "2026-09-10", 250, 6)]),
     );
     expect(target?.kind).toBe("revisit");
@@ -73,7 +73,7 @@ describe("nextTarget", () => {
   });
 
   it("has nothing to suggest when every record is recent and every duration covered", () => {
-    expect(nextTarget(recordsOf([ride("all", "2026-09-10", 200, 361)]))).toBeNull();
+    expect(suggestNext(recordsOf([ride("all", "2026-09-10", 200, 361)]))).toBeNull();
   });
 });
 
@@ -81,7 +81,7 @@ describe("renderRecordsPage", () => {
   const now = new Date("2026-10-27T00:00:00Z"); // eight weeks after SINCE
 
   it("loads, then shows a section per machine type with a target", async () => {
-    const page = renderRecordsPage(Promise.resolve({ workouts: all(), truncated: false, excluded: [] }), {
+    const page = renderRecordsPage(Promise.resolve({ workouts: all(), truncated: false, excluded: [], targets: [] }), {
       onShowStock: () => {},
       now,
     });
@@ -89,14 +89,14 @@ describe("renderRecordsPage", () => {
     await settle();
     const sections = page.querySelectorAll(".recordspage");
     expect(sections).toHaveLength(2);
-    expect(sections[0]?.querySelector(".target")?.textContent).toMatch(/Next|record/);
+    expect(sections[0]?.querySelector(".target")?.textContent).toMatch(/Suggested next|record/);
     // The fixtures end on 13 Sep: the recumbent ride, in July, is not recent.
     expect(sections[1]?.textContent).toContain("No rides on this machine in the last 8 weeks");
   });
 
   it("links every record to its ride", async () => {
     const workouts = all();
-    const page = renderRecordsPage(Promise.resolve({ workouts, truncated: false, excluded: [] }), { onShowStock: () => {}, now });
+    const page = renderRecordsPage(Promise.resolve({ workouts, truncated: false, excluded: [], targets: [] }), { onShowStock: () => {}, now });
     await settle();
     const ids = new Set(workouts.map((w) => w.routeId));
     const links = [...page.querySelectorAll<HTMLAnchorElement>(".recordtable a")];
@@ -105,7 +105,7 @@ describe("renderRecordsPage", () => {
   });
 
   it("says when the history is incomplete, and when it could not be loaded", async () => {
-    const partial = renderRecordsPage(Promise.resolve({ workouts: all(), truncated: true, excluded: [] }), {
+    const partial = renderRecordsPage(Promise.resolve({ workouts: all(), truncated: true, excluded: [], targets: [] }), {
       onShowStock: () => {},
       now,
     });
@@ -120,7 +120,7 @@ describe("renderRecordsPage", () => {
     const good = ride("good", "2026-09-06", 200, 6);
     const included: string[] = [];
     const page = renderRecordsPage(
-      Promise.resolve({ workouts: [bad, good], truncated: false, excluded: [{ id: "bad", startedAt: bad.startedAt }] }),
+      Promise.resolve({ workouts: [bad, good], truncated: false, excluded: [{ id: "bad", startedAt: bad.startedAt }], targets: [] }),
       { onShowStock: () => {}, onInclude: (id) => included.push(id), now },
     );
     await settle();
@@ -135,7 +135,7 @@ describe("renderRecordsPage", () => {
 
   it("excludes the ride a record came from", async () => {
     const excluded: string[] = [];
-    const page = renderRecordsPage(Promise.resolve({ workouts: all(), truncated: false, excluded: [] }), {
+    const page = renderRecordsPage(Promise.resolve({ workouts: all(), truncated: false, excluded: [], targets: [] }), {
       onShowStock: () => {},
       onExclude: (ride) => excluded.push(ride.id),
       now,
@@ -146,6 +146,64 @@ describe("renderRecordsPage", () => {
     button.click();
     expect(excluded).toHaveLength(1);
     expect(page.querySelector(".excludedrides")).toBeNull();
+  });
+
+  it("sets a target above the best only, and shows open and reached targets", async () => {
+    const set: unknown[] = [];
+    const cleared: unknown[] = [];
+    const rides = [ride("a", "2026-09-01", 200, 6), ride("b", "2026-09-20", 230, 6)];
+    const targets = [
+      { machineType: "upright_bike", windowSeconds: 30, watts: 220, setAt: new Date("2026-09-10T00:00:00Z") },
+      { machineType: "upright_bike", windowSeconds: 60, watts: 260, setAt: new Date("2026-09-10T00:00:00Z") },
+    ];
+    const page = renderRecordsPage(Promise.resolve({ workouts: rides, truncated: false, excluded: [], targets }), {
+      onShowStock: () => {},
+      onSetTarget: (t) => set.push(t),
+      onClearTarget: (s) => cleared.push(s),
+      now,
+    });
+    await settle();
+    const row = (label: string) =>
+      [...page.querySelectorAll(".milestonetable tr")].find((tr) => tr.querySelector("th")?.textContent === label)!;
+
+    expect(row("30 s").textContent).toContain("✓ Your 220 W reached");
+    expect(row("1 min").textContent).toContain("Your target 260 W, 30 W to go");
+    row("1 min").querySelector<HTMLButtonElement>(".owntarget button")!.click();
+    expect(cleared).toEqual([{ machineType: "upright_bike", windowSeconds: 60 }]);
+
+    // 5 min was never ridden: any whole number of watts is above "no best".
+    row("5 min").querySelector<HTMLButtonElement>(".owntarget button")!.click();
+    const input = row("5 min").querySelector("input")!;
+    input.value = "180";
+    row("5 min").querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+    expect(set).toEqual([{ machineType: "upright_bike", windowSeconds: 300, watts: 180 }]);
+  });
+
+  it("refuses a target at or below the current best, and says why", async () => {
+    const set: unknown[] = [];
+    const page = renderRecordsPage(
+      Promise.resolve({ workouts: [ride("a", "2026-09-01", 200, 6)], truncated: false, excluded: [], targets: [] }),
+      { onShowStock: () => {}, onSetTarget: (t) => set.push(t), now },
+    );
+    await settle();
+    const row = [...page.querySelectorAll(".milestonetable tr")].find((tr) => tr.querySelector("th")?.textContent === "1 min")!;
+    row.querySelector<HTMLButtonElement>(".owntarget button")!.click();
+    row.querySelector("input")!.value = "200";
+    row.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+    expect(set).toEqual([]);
+    expect(row.querySelector(".formerror")?.textContent).toContain("Above your best of 200 W");
+  });
+
+  it("names the milestones an exclusion withdrew", async () => {
+    const glitch = ride("glitch", "2026-09-01", 410, 6);
+    const real = ride("real", "2026-09-05", 230, 6);
+    const page = renderRecordsPage(
+      Promise.resolve({ workouts: [glitch, real], truncated: false, excluded: [{ id: "glitch", startedAt: glitch.startedAt }], targets: [] }),
+      { onShowStock: () => {}, now },
+    );
+    await settle();
+    const note = page.querySelector(".milestones .changes")?.textContent ?? "";
+    expect(note).toContain("1 min: 250 W, 275 W, 300 W, 325 W, 350 W, 375 W, 400 W withdrawn, 9 now dated to a later ride");
   });
 
   it("offers a way back only when opened from a ride", () => {

@@ -47,11 +47,12 @@ rather than a task belongs in AGENTS.md instead.
 ## Views
 
 - [ ] **Records: what is still missing.** The ride's records section, the records
-      page and excluding a bad ride are built (experimental). Before targets or
-      milestones that are *stored*, decide what is frozen once earned, and what an
-      exclusion does to a milestone it already earned. Anything stored has to be
-      visible and clearable on the options page. The records page might also move
-      into the list-page replacement below, once that exists.
+      page, excluding a bad ride, and milestones with the rider's own targets are
+      built (experimental). Open: whether the milestone ladder should live in
+      `matrix-workouts-core` beside `personalRecords`, so the MCP server and the
+      app give the same milestones (move it when a second consumer wants it). Also
+      whether the records page moves into the list-page replacement below, once
+      that exists.
 
 - [ ] **Use the history the API already returns.** `fetchWorkoutHistory` fetches every
       ride on the account and we render exactly one of them. Nothing cross-ride exists

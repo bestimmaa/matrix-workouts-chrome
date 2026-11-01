@@ -1,5 +1,6 @@
 import { rideRecords, type PowerCurvePoint, type RideRecord, type Workout } from "matrix-workouts-core";
 import { clock } from "./format.js";
+import { milestonesEarnedBy, targetState, type Milestone, type Target, type TargetState } from "./milestones.js";
 import { el } from "./svg.js";
 
 /**
@@ -29,6 +30,19 @@ export interface RideComparison {
   excluded: boolean;
   /** Earlier rides of the same machine type left out because the rider excluded them. */
   excludedEarlier: number;
+  /** The highest milestone this ride earned at each duration where it earned one. */
+  milestones: Milestone[];
+  /** The rider's own targets this ride was the first to reach. */
+  targetsReached: TargetState[];
+}
+
+export interface CompareOptions {
+  /** The API reported more history than it sent. */
+  truncated?: boolean;
+  /** Rides the rider excluded from records, by `Workout.id`. */
+  excludedIds?: ReadonlySet<string>;
+  /** The rider's own targets, any machine type. */
+  targets?: readonly Target[];
 }
 
 /**
@@ -40,20 +54,30 @@ export interface RideComparison {
 export function compareRide(
   workout: Workout,
   history: readonly Workout[],
-  truncated = false,
-  excludedIds: ReadonlySet<string> = new Set(),
+  { truncated = false, excludedIds = new Set(), targets = [] }: CompareOptions = {},
 ): RideComparison {
   const start = workout.startedAt.getTime();
   const earlier = history.filter(
     (ride) => ride.machineType === workout.machineType && ride.id !== workout.id && ride.startedAt.getTime() < start,
   );
   const counted = earlier.filter((ride) => !excludedIds.has(ride.id));
+  const excluded = excludedIds.has(workout.id);
+  // Who earned a milestone or reached a target first depends only on rides up to
+  // this one, so the verdict does not change as the history grows past it.
+  const upToHere = excluded ? counted : [...counted, workout];
   return {
     records: rideRecords(workout, counted, RECORD_WINDOWS_SECONDS),
     compared: counted.length,
     truncated,
-    excluded: excludedIds.has(workout.id),
+    excluded,
     excludedEarlier: earlier.length - counted.length,
+    milestones: excluded ? [] : milestonesEarnedBy(workout, upToHere, RECORD_WINDOWS_SECONDS),
+    targetsReached: excluded
+      ? []
+      : targets
+          .filter((target) => target.machineType === workout.machineType)
+          .map((target) => targetState(target, upToHere))
+          .filter((state) => state.reachedBy?.workoutId === workout.id),
   };
 }
 
@@ -118,8 +142,29 @@ function nearest(records: readonly RideRecord[]): HTMLElement | null {
   ]);
 }
 
+/** A target the rider set, reached by this ride. Their own number, so it leads. */
+function targetLine(state: TargetState): HTMLElement {
+  const { target } = state;
+  return el("li", { class: "target" }, [
+    el("strong", { text: `Your ${windowLabel(target.windowSeconds)} target reached` }),
+    ` ${target.watts} W, set ${shortDate(target.setAt)}`,
+  ]);
+}
+
+/** The highest watt step this ride earned at one duration. */
+function milestoneLine(milestone: Milestone): HTMLElement {
+  return el("li", { class: "milestone" }, [
+    el("strong", { text: `${windowLabel(milestone.windowSeconds)} milestone` }),
+    ` ${milestone.watts} W, at ${clock(milestone.effort.atSeconds)}`,
+  ]);
+}
+
 function body(comparison: RideComparison): Node[] {
-  const lines = comparison.records.map(achievement).filter((line): line is HTMLElement => line !== null);
+  const lines = [
+    ...comparison.targetsReached.map(targetLine),
+    ...comparison.records.map(achievement).filter((line): line is HTMLElement => line !== null),
+    ...comparison.milestones.map(milestoneLine),
+  ];
   const nodes: Node[] = [];
   if (lines.length > 0) nodes.push(el("ul", { class: "records" }, lines));
   else nodes.push(el("p", { text: "No new records on this ride." }));

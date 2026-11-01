@@ -8,6 +8,15 @@ The version history source of truth is git tags in the format `vMAJOR.MINOR.PATC
 
 ### Added
 
+- **Milestones and your own targets (experimental).** A milestone every 25 W at
+  each duration, dated to the first ride that held it, under each machine's records.
+  You can also set your own target per duration, which is reached by the first ride
+  after you set it. A ride's records section names the target it reached and the
+  milestone it earned. Excluding a ride withdraws its milestones, and the page says
+  which. Targets are stored in `chrome.storage.local` and listed and clearable on
+  the options page. Milestones are worked out from the history and not stored. The
+  records page's own suggestion now reads "Suggested next", to keep it apart from
+  your targets.
 - **Excluding a bad ride from records (experimental).** *Exclude from records* on a
   ride's records section, or the × beside any record on the records page, takes the
   whole ride out of every record. The next best effort takes its place. Excluded

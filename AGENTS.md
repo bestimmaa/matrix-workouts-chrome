@@ -174,12 +174,12 @@ failed request is forgotten so the next ride asks again.
 Also built, **experimental**: the **records page** (`src/ui/recordsPage.ts`). For
 each machine type it shows every duration's best ever next to its best in the last
 8 weeks, grouped as short (30 s, 1 min), medium (5, 10 min) and long (20, 60 min)
-efforts, with one next target above them. Every number links to its ride. Two ways
+efforts, with one suggestion of what to aim for next above them. Every number links to its ride. Two ways
 in: the toolbar icon anywhere off a ride, where it used to say "Open a workout
 first", and the ride's records section, whose *All records* button opens the page
 with a *Back to ride*. It reads the same in-memory history as everything else.
 
-How the next target is picked (`nextTarget`), so it is never arbitrary: the old
+How the suggestion is picked (`suggestNext`), so it is never arbitrary: the old
 record (set before the 8 weeks) that recent form is closest to; else the shortest
 duration never ridden; else the shortest record with no recent effort at that
 length. When a machine has no rides in the 8 weeks, the page says that instead.
@@ -197,8 +197,34 @@ records page lists excluded rides with *Count again*, and the options page lists
 them and clears them. The list is read fresh from storage every time records are
 computed, so a clear on the options page takes effect without a reload.
 
-Not built: trends, sprint-to-sprint comparison, and stored targets or milestones.
-See TODO.md.
+Also built, **experimental**: **milestones and the rider's own targets**
+(`src/ui/milestones.ts`), shown under each machine's records and on the ride's
+records section. Decided with the rider on 1 Nov 2026:
+
+- **Milestones are fixed watt steps**, every 25 W at each duration, each dated to
+  the first ride that held it. The rule is the same for everyone and is not a
+  benchmark. **They are worked out, never stored**: a step's earner is the first
+  ride to reach it, and later rides cannot change who was first, so the same rides
+  always give the same milestones on the same dates.
+- **Excluding a ride withdraws its milestones, and the page says so.** A step moves
+  to the next ride that genuinely held it or goes back to not earned. The note
+  names what was withdrawn and counts what only moved, because excluding an early
+  ride re-dates every low step it had earned and a full list would bury the one
+  that matters.
+- **The rider's own targets are stored**, one per duration and machine type, and
+  shown and clearable on the options page. A target is reached by the first ride
+  *after* it was set, and the page only accepts one above the current best, so a
+  ride from before could never be the one that reached it. Whether it was reached
+  is worked out each time and never stored, so excluding the ride that reached it
+  re-opens it.
+- **Every comparison is on displayed watts.** A step or a target is reached when
+  the effort rounds to it, the same rule as for records.
+
+The ride's records section lists a target reached first (it is the rider's own
+number), then records, then the highest milestone the ride earned per duration.
+These are different accomplishments, so they stay on separate lines.
+
+Not built: trends and sprint-to-sprint comparison. See TODO.md.
 
 **Scope: the indoor bike only, and this is now enforced rather than merely
 intended.** Both bike types (upright and recumbent) are covered by fixtures and are
@@ -610,11 +636,18 @@ This handles personal health data.
   `matches` pattern, which needs no host permission. `orion.jfit.co` answers 403 and
   must not be added.
 - No remote code. MV3 forbids it and so do we.
-- Anything written to `chrome.storage` must be user-visible and clearable. Two
-  things are: the rider's Strava app and tokens (see "Strava"), and the rides
-  excluded from records (`excludedRides`, see `src/content/exclusions.ts`): each
-  ride's id, start time and when it was excluded, and nothing from the ride itself.
-  The options page lists both and clears both.
+- Anything written to `chrome.storage` must be user-visible and clearable. Three
+  things are:
+  - the rider's Strava app and tokens (see "Strava");
+  - the rides excluded from records (`excludedRides`, see
+    `src/content/exclusions.ts`): each ride's id, start time and when it was
+    excluded;
+  - the rider's own targets (`recordTargets`, see `src/content/targets.ts`): the
+    number, its duration and machine type, and when it was set.
+
+  None of them holds anything from a ride itself. Milestones and whether a target
+  was reached are worked out from the history and never stored. The options page
+  lists all three and clears each.
 - **The JSON export is a local download and must stay one.** It carries the
   upstream record verbatim, ids and all, and it is never what goes to Strava. The
   button's tooltip says nothing is uploaded before it is pressed, and a

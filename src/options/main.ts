@@ -2,6 +2,9 @@ import tokens from "../ui/tokens.css?inline";
 import { chromeStrava } from "../background/chromeStrava.js";
 import { APP_KEY, TOKENS_KEY, connection, disconnect, saveApp } from "../background/strava.js";
 import { EXCLUDED_KEY, chromeExclusions, include, loadExcluded } from "../content/exclusions.js";
+import { TARGETS_KEY, chromeTargets, clearTarget, loadTargets } from "../content/targets.js";
+import { machineLabel } from "../ui/format.js";
+import { windowLabel } from "../ui/records.js";
 
 /**
  * The options page: where the rider's own Strava app is entered, and where everything
@@ -101,6 +104,36 @@ async function showExcluded(): Promise<void> {
 
 clearExcluded.addEventListener("click", () => void chromeExclusions.clear());
 
+/* --------------------------------------------------------------- targets */
+
+const targetList = byId<HTMLUListElement>("targetList");
+const targetsNone = byId<HTMLElement>("targetsNone");
+const clearTargets = byId<HTMLButtonElement>("clearTargets");
+
+/** The rider's own targets, each with a way to clear it. */
+async function showTargets(): Promise<void> {
+  const targets = await loadTargets(chromeTargets);
+  targetList.replaceChildren(
+    ...targets.map((target) => {
+      const item = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent =
+        `${machineLabel(target.machineType)}, ${windowLabel(target.windowSeconds)}: ${target.watts} W ` +
+        `(set ${new Date(target.setAt).toLocaleDateString(undefined, { dateStyle: "medium" })})`;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Clear";
+      button.addEventListener("click", () => void clearTarget(chromeTargets, target));
+      item.append(name, button);
+      return item;
+    }),
+  );
+  targetsNone.hidden = targets.length > 0;
+  clearTargets.hidden = targets.length === 0;
+}
+
+clearTargets.addEventListener("click", () => void chromeTargets.clear());
+
 // The worker writes this storage while the page may be open: the first upload
 // connects, a revoked token disconnects. A ride view excludes a ride. Every change
 // here re-renders, this page's own saves included.
@@ -109,7 +142,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (APP_KEY in changes) void show(true);
   else if (TOKENS_KEY in changes) void show(false);
   if (EXCLUDED_KEY in changes) void showExcluded();
+  if (TARGETS_KEY in changes) void showTargets();
 });
 
 void show(true);
 void showExcluded();
+void showTargets();

@@ -200,6 +200,27 @@ describe("the content script", () => {
     expect(stored.has("excludedRides")).toBe(false);
   });
 
+  it("sets a target on the records page, stores it, and clears it again", async () => {
+    toggle();
+    await settle();
+    const row = () =>
+      [...sheet().querySelectorAll(".recordspage")][0]!
+        .querySelectorAll(".milestonetable tr")[5]!; // 60 min
+    row().querySelector<HTMLButtonElement>(".owntarget button")!.click();
+    const input = row().querySelector("input")!;
+    input.value = String(Number(input.min) + 10);
+    row().querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+    await settle();
+    const stored_ = stored.get("recordTargets") as { windowSeconds: number; watts: number }[];
+    expect(stored_).toEqual([expect.objectContaining({ windowSeconds: 3600, watts: Number(input.min) + 10 })]);
+    expect(row().textContent).toContain(`Your target ${Number(input.min) + 10} W`);
+
+    row().querySelector<HTMLButtonElement>(".owntarget button")!.click();
+    await settle();
+    expect(stored.has("recordTargets")).toBe(false);
+    showStock();
+  });
+
   it("gives a ride on another machine no pill, and no pill on the way out either", () => {
     localStorage.setItem(PERSIST_KEY, withTreadmill(SPRINT));
     go(`/workouts/${SPRINT}`);

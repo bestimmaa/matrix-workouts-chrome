@@ -24,10 +24,10 @@
       button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
       #disconnect, #disconnect:hover { background: transparent; color: var(--ink); border: 1px solid var(--rule); }
       #status { font-weight: 700; }
-      #excluded ul { list-style: none; margin: 0 0 12px; padding: 0; }
-      #excluded li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--rule); }
-      #excluded li button { margin: 0; padding: 6px 12px; font-size: 12px; }
-      #excluded li button, #clearExcluded { background: transparent; color: var(--ink); border: 1px solid var(--rule); }
+      #excluded ul, #targets ul { list-style: none; margin: 0 0 12px; padding: 0; }
+      #excluded li, #targets li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--rule); }
+      #excluded li button, #targets li button { margin: 0; padding: 6px 12px; font-size: 12px; }
+      #excluded li button, #clearExcluded, #targets li button, #clearTargets { background: transparent; color: var(--ink); border: 1px solid var(--rule); }
     </style>
   </head>
   <body>
@@ -86,6 +86,19 @@
         <ul id="excludedList"></ul>
         <p id="excludedNone">No rides excluded.</p>
         <button type="button" id="clearExcluded">Count them all again</button>
+      </section>
+
+      <section id="targets">
+        <h2>Your targets</h2>
+        <p>
+          The targets you set on the records page, one per duration and machine type.
+          Stored in this browser only: the number, its duration and machine type, and when
+          you set it. Whether a ride reached it is worked out from your history each time,
+          and is not stored. Milestones are not stored either.
+        </p>
+        <ul id="targetList"></ul>
+        <p id="targetsNone">No targets set.</p>
+        <button type="button" id="clearTargets">Clear all targets</button>
       </section>
     </main>
     <script src="options.js"></script>
