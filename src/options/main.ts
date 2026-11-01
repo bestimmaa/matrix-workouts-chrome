@@ -2,6 +2,10 @@ import tokens from "../ui/tokens.css?inline";
 import { chromeStrava } from "../background/chromeStrava.js";
 import { APP_KEY, TOKENS_KEY, connection, disconnect, saveApp } from "../background/strava.js";
 import { EXCLUDED_KEY, chromeExclusions, include, loadExcluded } from "../content/exclusions.js";
+import { TARGETS_KEY, chromeTargets, clearTarget, loadTargets } from "../content/targets.js";
+import { machineLabel } from "../ui/format.js";
+import { windowLabel } from "../ui/records.js";
+import { el } from "../ui/svg.js";
 
 /**
  * The options page: where the rider's own Strava app is entered, and where everything
@@ -73,33 +77,62 @@ byId<HTMLButtonElement>("disconnect").addEventListener("click", async () => {
   }
 });
 
-/* -------------------------------------------------------- excluded rides */
+/* ------------------------------------------- excluded rides and targets */
 
-const excludedList = byId<HTMLUListElement>("excludedList");
-const excludedNone = byId<HTMLElement>("excludedNone");
-const clearExcluded = byId<HTMLButtonElement>("clearExcluded");
-
-/** The rides excluded from records, each with a way to count it again. */
-async function showExcluded(): Promise<void> {
-  const rides = await loadExcluded(chromeExclusions);
-  excludedList.replaceChildren(
-    ...rides.map((ride) => {
-      const item = document.createElement("li");
-      const name = document.createElement("span");
-      name.textContent = new Date(ride.startedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = "Count again";
-      button.addEventListener("click", () => void include(chromeExclusions, ride.id));
-      item.append(name, button);
-      return item;
-    }),
-  );
-  excludedNone.hidden = rides.length > 0;
-  clearExcluded.hidden = rides.length === 0;
+/**
+ * One stored list on the page: a row per entry with its one action, a line when
+ * there are none, and a button that clears them all.
+ */
+function storedList<T>(
+  ids: { list: string; none: string; clearAll: string },
+  load: () => Promise<T[]>,
+  row: (item: T) => { text: string; action: string; onAction: () => unknown },
+  clearAll: () => unknown,
+): () => Promise<void> {
+  const list = byId<HTMLUListElement>(ids.list);
+  const none = byId<HTMLElement>(ids.none);
+  const clear = byId<HTMLButtonElement>(ids.clearAll);
+  clear.addEventListener("click", () => void clearAll());
+  return async () => {
+    const items = await load();
+    list.replaceChildren(
+      ...items.map((item) => {
+        const { text, action, onAction } = row(item);
+        const button = el("button", { type: "button", text: action });
+        button.addEventListener("click", () => void onAction());
+        return el("li", {}, [el("span", { text }), button]);
+      }),
+    );
+    none.hidden = items.length > 0;
+    clear.hidden = items.length === 0;
+  };
 }
 
-clearExcluded.addEventListener("click", () => void chromeExclusions.clear());
+/** The rides excluded from records, each with a way to count it again. */
+const showExcluded = storedList(
+  { list: "excludedList", none: "excludedNone", clearAll: "clearExcluded" },
+  () => loadExcluded(chromeExclusions),
+  (ride) => ({
+    text: new Date(ride.startedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
+    action: "Count again",
+    onAction: () => include(chromeExclusions, ride.id),
+  }),
+  () => chromeExclusions.clear(),
+);
+
+/** The rider's own targets, each with a way to clear it. */
+const showTargets = storedList(
+  { list: "targetList", none: "targetsNone", clearAll: "clearTargets" },
+  () => loadTargets(chromeTargets),
+  (target) => ({
+    text:
+      `${machineLabel(target.machineType)}, ${windowLabel(target.windowSeconds)}: ${target.watts} W ` +
+      `(set ${new Date(target.setAt).toLocaleDateString(undefined, { dateStyle: "medium" })})`,
+    action: "Clear",
+    onAction: () => clearTarget(chromeTargets, target),
+  }),
+  () => chromeTargets.clear(),
+);
 
 // The worker writes this storage while the page may be open: the first upload
 // connects, a revoked token disconnects. A ride view excludes a ride. Every change
@@ -109,7 +142,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (APP_KEY in changes) void show(true);
   else if (TOKENS_KEY in changes) void show(false);
   if (EXCLUDED_KEY in changes) void showExcluded();
+  if (TARGETS_KEY in changes) void showTargets();
 });
 
 void show(true);
 void showExcluded();
+void showTargets();

@@ -64,7 +64,7 @@ describe("compareRide with exclusions", () => {
     expect(compareRide(today, [bad, good, today]).records.find((r) => r.windowSeconds === 60)?.outcome).toBe(
       "below-record",
     );
-    const comparison = compareRide(today, [bad, good, today], false, new Set(["bad"]));
+    const comparison = compareRide(today, [bad, good, today], { excludedIds: new Set(["bad"]) });
     const minute = comparison.records.find((r) => r.windowSeconds === 60);
     expect(minute?.outcome).toBe("record");
     expect(minute?.previous?.workoutId).toBe("good");
@@ -73,7 +73,7 @@ describe("compareRide with exclusions", () => {
   });
 
   it("marks the ride itself as excluded", () => {
-    expect(compareRide(bad, [bad], false, new Set(["bad"])).excluded).toBe(true);
+    expect(compareRide(bad, [bad], { excludedIds: new Set(["bad"]) }).excluded).toBe(true);
     expect(compareRide(bad, [bad]).excluded).toBe(false);
   });
 });
@@ -115,14 +115,14 @@ describe("recordsSection", () => {
   });
 
   it("says when the history is incomplete", () => {
-    const out = text(compareRide(ride("new", "2026-09-08", 230, 6), [old], true));
+    const out = text(compareRide(ride("new", "2026-09-08", 230, 6), [old], { truncated: true }));
     expect(out).toContain("history incomplete");
   });
 
   it("says an excluded ride is excluded, and offers to count it again", () => {
     let toggled = 0;
     const section = recordsSection({ onToggleExcluded: () => toggled++ });
-    section.show(compareRide(old, [old], false, new Set(["old"])));
+    section.show(compareRide(old, [old], { excludedIds: new Set(["old"]) }));
     expect(section.root.textContent).toContain("You excluded this ride from records");
     expect(section.root.querySelector("li")).toBeNull();
     const button = section.root.querySelector<HTMLButtonElement>("button.exclude")!;
@@ -134,9 +134,27 @@ describe("recordsSection", () => {
 
   it("offers to exclude a counted ride, and counts the excluded earlier ones", () => {
     const section = recordsSection({ onToggleExcluded: () => {} });
-    section.show(compareRide(ride("new", "2026-09-08", 230, 6), [old, ride("x", "2026-09-02", 100, 6)], false, new Set(["x"])));
+    section.show(compareRide(ride("new", "2026-09-08", 230, 6), [old, ride("x", "2026-09-02", 100, 6)], { excludedIds: new Set(["x"]) }));
     expect(section.root.querySelector("button.exclude")?.textContent).toBe("Exclude from records");
     expect(section.root.textContent).toContain("against 1 earlier ride (1 excluded)");
+  });
+
+  it("names the milestone a ride earned and the rider's own target it reached", () => {
+    const target = { machineType: "upright_bike", windowSeconds: 60, watts: 225, setAt: new Date("2026-09-02T00:00:00Z") };
+    const out = text(compareRide(ride("new", "2026-09-08", 230, 6), [old], { targets: [target] }));
+    expect(out).toContain("Your 1 min target reached 225 W");
+    expect(out).toContain("1 min milestone 225 W");
+    // Its own number leads: the target line comes first.
+    expect(out.indexOf("target reached")).toBeLessThan(out.indexOf("New 1 min best"));
+  });
+
+  it("gives an excluded ride no milestones and no targets", () => {
+    const comparison = compareRide(old, [old], {
+      excludedIds: new Set(["old"]),
+      targets: [{ machineType: "upright_bike", windowSeconds: 60, watts: 100, setAt: new Date(0) }],
+    });
+    expect(comparison.milestones).toEqual([]);
+    expect(comparison.targetsReached).toEqual([]);
   });
 
   it("fails quietly, with the ride still on screen", () => {

@@ -108,4 +108,26 @@ describe("the options page", () => {
     expect(items()).toHaveLength(0);
     expect(store.has("excludedRides")).toBe(false);
   });
+
+  it("lists the rider's targets, clears one, and clears the rest", async () => {
+    expect(document.getElementById("targetsNone")!.hidden).toBe(false);
+    await chrome.storage.local.set({
+      recordTargets: [
+        { machineType: "upright_bike", windowSeconds: 300, watts: 240, setAt: "2026-10-30T07:00:00Z" },
+        { machineType: "upright_bike", windowSeconds: 1200, watts: 170, setAt: "2026-10-30T07:00:00Z" },
+      ],
+    });
+    await settle();
+    const items = () => [...document.querySelectorAll("#targetList li")];
+    expect(items().map((li) => li.querySelector("span")!.textContent)).toEqual([
+      expect.stringMatching(/^Upright bike, 5 min: 240 W \(set /),
+      expect.stringMatching(/^Upright bike, 20 min: 170 W \(set /),
+    ]);
+    items()[0]!.querySelector("button")!.click();
+    await settle();
+    expect(items()).toHaveLength(1);
+    document.getElementById("clearTargets")!.click();
+    await settle();
+    expect(store.has("recordTargets")).toBe(false);
+  });
 });

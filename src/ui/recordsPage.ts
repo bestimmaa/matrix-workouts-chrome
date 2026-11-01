@@ -1,8 +1,19 @@
-import { personalRecords, type PowerCurvePoint, type WindowRecord, type Workout } from "matrix-workouts-core";
+import { personalRecords, shownWatts, type PowerCurvePoint, type WindowRecord, type Workout } from "matrix-workouts-core";
 import { topBar } from "./dashboard.js";
 import { fullDate, machineLabel, shortDate, wattsText } from "./format.js";
-import { RECORD_WINDOWS_SECONDS, windowLabel } from "./records.js";
-import { el } from "./svg.js";
+import {
+  MAX_TARGET_WATTS,
+  STEP_WATTS,
+  exclusionChanges,
+  ladder,
+  lowestTarget,
+  targetState,
+  type Ladder,
+  type MilestoneChange,
+  type Target,
+} from "./milestones.js";
+import { RECORD_WINDOWS_SECONDS, rideLink, windowLabel } from "./records.js";
+import { actionButton, el } from "./svg.js";
 
 /**
  * The records page: every duration's all-time best next to its best in the last
@@ -15,7 +26,7 @@ import { el } from "./svg.js";
  */
 
 /** Eight weeks, as Strava's Power Skills uses for current form. */
-export const RECENT_DAYS = 56;
+const RECENT_DAYS = 56;
 
 /**
  * Durations grouped by kind of effort, so the page reads as three short lists rather
@@ -34,15 +45,18 @@ export interface RecordsInput {
   truncated: boolean;
   /** Rides the rider excluded from records, by `Workout.id`, with when each started. */
   excluded: readonly { id: string; startedAt: Date }[];
+  /** The rider's own targets, one per duration and machine type at most. */
+  targets: readonly Target[];
 }
 
 /** The records of one machine type, plus the rides they come from. */
 export interface MachineRecords {
   machineType: string;
-  rides: number;
   first: Date;
   last: Date;
   records: WindowRecord[];
+  /** The rides themselves, for the milestones. */
+  workouts: Workout[];
 }
 
 /**
@@ -61,17 +75,20 @@ export function machineRecords(workouts: readonly Workout[], recentSince: Date):
       const times = rides.map((ride) => ride.startedAt.getTime());
       return {
         machineType,
-        rides: rides.length,
         first: new Date(Math.min(...times)),
         last: new Date(Math.max(...times)),
         records: personalRecords(rides, { windowsSeconds: RECORD_WINDOWS_SECONDS, recentSince }),
+        workouts: rides,
       };
     })
-    .sort((a, b) => b.rides - a.rides);
+    .sort((a, b) => b.workouts.length - a.workouts.length);
 }
 
-/** The single next thing to aim for, or `null` when there is nothing to suggest. */
-export type NextTarget =
+/**
+ * The one thing the page suggests aiming for next, or `null` when there is nothing to
+ * suggest. Not the rider's own target, which they set themselves (see `milestones.ts`).
+ */
+export type Suggestion =
   /** The recent best closest to its record, and the gap. */
   | { kind: "beat"; record: WindowRecord & { allTime: PowerCurvePoint; recent: PowerCurvePoint }; gapWatts: number }
   /** A duration no ride has covered yet. */
@@ -85,13 +102,13 @@ export type NextTarget =
  * duration never ridden; else the shortest record with no recent effort at all.
  * `null` only when every record was set in the recent window.
  */
-export function nextTarget(records: readonly WindowRecord[]): NextTarget | null {
-  let best: NextTarget | null = null;
+export function suggestNext(records: readonly WindowRecord[]): Suggestion | null {
+  let best: Suggestion | null = null;
   let bestShare = 0;
   for (const record of records) {
     const { allTime, recent } = record;
     if (!allTime || !recent || recent.workoutId === allTime.workoutId) continue;
-    const gapWatts = Math.round(allTime.watts) - Math.round(recent.watts);
+    const gapWatts = shownWatts(allTime) - shownWatts(recent);
     if (gapWatts <= 0) continue;
     const share = recent.watts / allTime.watts;
     if (share > bestShare) {
@@ -114,25 +131,15 @@ type OnExclude = ((point: PowerCurvePoint) => void) | undefined;
 
 function effortCell(point: PowerCurvePoint | null, empty: string, onExclude: OnExclude): HTMLElement {
   if (!point) return el("td", { class: "empty", text: empty });
-  const cell = el("td", {}, [
-    el("strong", { text: wattsText(point.watts) }),
-    " ",
-    el("a", { href: `/workouts/${point.routeId}`, text: shortDate(point.startedAt) }),
-  ]);
+  const cell = el("td", {}, [el("strong", { text: wattsText(point.watts) }), " ", rideLink(point)]);
   if (onExclude) {
     const label = `Exclude the ride of ${fullDate(point.startedAt)} from records`;
-    const button = el("button", {
-      type: "button",
-      class: "excludeeffort",
-      text: "×",
-      title: `${label}. The next best effort takes its place.`,
-      "aria-label": label,
-    });
-    button.addEventListener("click", () => {
-      button.disabled = true;
-      onExclude(point);
-    });
-    cell.append(button);
+    cell.append(
+      actionButton(
+        { class: "excludeeffort", text: "×", title: `${label}. The next best effort takes its place.`, "aria-label": label },
+        () => onExclude(point),
+      ),
+    );
   }
   return cell;
 }
@@ -185,7 +192,7 @@ function groupTable(name: string, records: readonly WindowRecord[], onExclude: O
   ]);
 }
 
-function targetLine(target: NextTarget | null, idleSince: Date | null): HTMLElement {
+function targetLine(target: Suggestion | null, idleSince: Date | null): HTMLElement {
   if (idleSince) {
     return el("p", { class: "target" }, [
       el("strong", { text: "No rides on this machine in the last 8 weeks." }),
@@ -200,40 +207,222 @@ function targetLine(target: NextTarget | null, idleSince: Date | null): HTMLElem
   }
   if (target.kind === "first") {
     return el("p", { class: "target" }, [
-      el("strong", { text: `Next: a first ${windowLabel(target.windowSeconds)} effort.` }),
+      el("strong", { text: `Suggested next: a first ${windowLabel(target.windowSeconds)} effort.` }),
       " No ride has held power that long yet.",
     ]);
   }
   if (target.kind === "revisit") {
     const { allTime } = target.record;
     return el("p", { class: "target" }, [
-      el("strong", { text: `Next target: ${windowLabel(target.record.windowSeconds)} at ${Math.round(allTime.watts) + 1} W.` }),
-      ` No ride in the last 8 weeks held power that long. Your record is ${Math.round(allTime.watts)} W, from `,
-      el("a", { href: `/workouts/${allTime.routeId}`, text: fullDate(allTime.startedAt) }),
+      el("strong", { text: `Suggested next: ${windowLabel(target.record.windowSeconds)} at ${lowestTarget(allTime)} W.` }),
+      ` No ride in the last 8 weeks held power that long. Your record is ${wattsText(allTime.watts)}, from `,
+      rideLink(allTime, fullDate),
       ".",
     ]);
   }
   const { record, gapWatts } = target;
   return el("p", { class: "target" }, [
-    el("strong", { text: `Next target: ${windowLabel(record.windowSeconds)} at ${Math.round(record.allTime.watts) + 1} W.` }),
-    ` Your best in the last 8 weeks is ${Math.round(record.recent.watts)} W, ${gapWatts} W short of the ` +
-      `${Math.round(record.allTime.watts)} W you held on `,
-    el("a", { href: `/workouts/${record.allTime.routeId}`, text: fullDate(record.allTime.startedAt) }),
+    el("strong", { text: `Suggested next: ${windowLabel(record.windowSeconds)} at ${lowestTarget(record.allTime)} W.` }),
+    ` Your best in the last 8 weeks is ${wattsText(record.recent.watts)}, ${gapWatts} W short of the ` +
+      `${wattsText(record.allTime.watts)} you held on `,
+    rideLink(record.allTime, fullDate),
     ".",
   ]);
 }
 
-function machineSection(machine: MachineRecords, recentSince: Date, onExclude: OnExclude): HTMLElement {
+/* ------------------------------------------------------------- milestones */
+
+/** What the milestones block may do: set or clear the rider's own targets. */
+interface TargetActions {
+  onSet: ((target: Omit<Target, "setAt">) => void) | undefined;
+  onClear: ((slot: { machineType: string; windowSeconds: number }) => void) | undefined;
+}
+
+/** How many earned steps a row shows before folding the rest into a count. */
+const SHOWN_STEPS = 3;
+
+function stepsCell(steps: Ladder): HTMLElement {
+  if (steps.earned.length === 0) return el("td", { class: "empty", text: "none yet" });
+  const shown = steps.earned.slice(-SHOWN_STEPS);
+  const earlier = steps.earned.length - shown.length;
+  // The wrapping row is a div inside the cell: a flex `td` stops being a table cell.
+  const cell = el("div", { class: "steps" });
+  for (const milestone of shown) {
+    cell.append(
+      el("span", { class: "step" }, [`✓ ${milestone.watts} W `, rideLink(milestone.effort)]),
+    );
+  }
+  if (earlier > 0) cell.append(el("span", { class: "earlier", text: `+${earlier} earlier` }));
+  return el("td", {}, [cell]);
+}
+
+function nextCell(steps: Ladder): HTMLElement {
+  if (!steps.best) return el("td", { class: "empty", text: "not recorded yet" });
+  const gap = steps.next - shownWatts(steps.best);
+  return el("td", { class: "next", text: `next ${steps.next} W, ${gap} W to go` });
+}
+
+/**
+ * The rider's own target for one duration: its status when there is one, otherwise
+ * a button that opens the form to set one.
+ */
+function targetCell(
+  machineType: string,
+  steps: Ladder,
+  target: Target | undefined,
+  workouts: readonly Workout[],
+  actions: TargetActions,
+): HTMLElement {
+  const cell = el("td", { class: "owntarget" });
+  const slot = { machineType, windowSeconds: steps.windowSeconds };
+  if (target) {
+    const clear = actions.onClear
+      ? [actionButton({ class: "secondary linkbutton", text: "Clear" }, () => actions.onClear!(slot))]
+      : [];
+    cell.append(...targetStatus(target, steps, workouts), " ", ...clear);
+  } else if (actions.onSet) {
+    const onSet = actions.onSet;
+    const open = el("button", { type: "button", class: "secondary linkbutton", text: "Set target" });
+    open.addEventListener("click", () =>
+      cell.replaceChildren(targetForm(steps, (watts) => onSet({ ...slot, watts }), () => cell.replaceChildren(open))),
+    );
+    cell.append(open);
+  }
+  return cell;
+}
+
+/** A set target: reached (and by which ride), already under an older best, or open. */
+function targetStatus(target: Target, steps: Ladder, workouts: readonly Workout[]): (Node | string)[] {
+  const { reachedBy } = targetState(target, workouts);
+  if (reachedBy) return [el("strong", { text: `✓ Your ${target.watts} W` }), " reached ", rideLink(reachedBy)];
+  const label = el("strong", { text: `Your target ${target.watts} W` });
+  const set = shortDate(target.setAt);
+  if (steps.best && shownWatts(steps.best) >= target.watts) {
+    // Only rides after the target count, and the best is older: it happens when a
+    // ride excluded at the time is counted again. Say so rather than "1 W to go".
+    return [
+      label,
+      ` (set ${set}) is below your best of ${wattsText(steps.best.watts)}, from a ride before you set it. ` +
+        "Set a higher one?",
+    ];
+  }
+  const gap = steps.best ? `, ${target.watts - shownWatts(steps.best)} W to go` : "";
+  return [label, `${gap} (set ${set})`];
+}
+
+/**
+ * The form that sets a target. It only accepts a whole number above the current
+ * best (see `lowestTarget`) and says why when it refuses.
+ */
+function targetForm(steps: Ladder, onSave: (watts: number) => void, onCancel: () => void): HTMLElement {
+  const lowest = lowestTarget(steps.best);
+  const input = el("input", {
+    type: "number",
+    min: String(lowest),
+    max: String(MAX_TARGET_WATTS),
+    step: "1",
+    value: String(Math.max(lowest, steps.next)),
+    "aria-label": `Target for ${windowLabel(steps.windowSeconds)}, watts`,
+  });
+  const save = el("button", { type: "submit", class: "secondary linkbutton", text: "Save" });
+  const cancel = el("button", { type: "button", class: "secondary linkbutton", text: "Cancel" });
+  const error = el("span", { class: "formerror", role: "status" });
+  const form = el("form", { class: "targetform" }, [input, " W ", save, cancel, error]);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const watts = Number(input.value);
+    if (!Number.isInteger(watts) || watts < lowest || watts > MAX_TARGET_WATTS) {
+      error.textContent =
+        watts < lowest && steps.best
+          ? ` Above your best of ${wattsText(steps.best.watts)}, please.`
+          : ` A whole number of watts, ${lowest} to ${MAX_TARGET_WATTS}.`;
+      return;
+    }
+    save.disabled = true;
+    onSave(watts);
+  });
+  cancel.addEventListener("click", onCancel);
+  queueMicrotask(() => input.focus());
+  return form;
+}
+
+/**
+ * What excluding rides did to this machine's milestones, one clause per duration.
+ * Withdrawn steps are named, because they are what the rider lost. Steps that only
+ * moved to a later ride are counted: excluding an early ride re-dates every low step
+ * it had earned, and listing 25 W, 50 W, 75 W … would bury the one that matters.
+ */
+function changesNote(changes: readonly MilestoneChange[]): HTMLElement | null {
+  if (changes.length === 0) return null;
+  const clauses = RECORD_WINDOWS_SECONDS.flatMap((windowSeconds) => {
+    const here = changes.filter((change) => change.windowSeconds === windowSeconds);
+    if (here.length === 0) return [];
+    const withdrawn = here.filter((change) => !change.now).map((change) => `${change.watts} W`);
+    const moved = here.length - withdrawn.length;
+    const parts = [
+      ...(withdrawn.length ? [`${withdrawn.join(", ")} withdrawn`] : []),
+      ...(moved ? [`${moved} now dated to a later ride`] : []),
+    ];
+    return [`${windowLabel(windowSeconds)}: ${parts.join(", ")}`];
+  });
+  return el("p", {
+    class: "changes",
+    text:
+      `Changed because you excluded rides. ${clauses.join("; ")}. ` +
+      "Each milestone belongs to the first remaining ride that held it.",
+  });
+}
+
+function milestonesBlock(
+  machine: MachineRecords,
+  allRides: readonly Workout[],
+  targets: readonly Target[],
+  actions: TargetActions,
+): HTMLElement {
+  const own = new Map(
+    targets.filter((t) => t.machineType === machine.machineType).map((t) => [t.windowSeconds, t]),
+  );
+  const rows = RECORD_WINDOWS_SECONDS.map((windowSeconds) => {
+    const steps = ladder(machine.workouts, windowSeconds);
+    return el("tr", {}, [
+      el("th", { scope: "row", text: windowLabel(windowSeconds) }),
+      stepsCell(steps),
+      nextCell(steps),
+      targetCell(machine.machineType, steps, own.get(windowSeconds), machine.workouts, actions),
+    ]);
+  });
+  const note = changesNote(exclusionChanges(allRides, machine.workouts, RECORD_WINDOWS_SECONDS));
+  return el("div", { class: "milestones" }, [
+    el("h3", { text: "Milestones and your targets" }),
+    el("p", {
+      class: "explain",
+      text:
+        `A milestone every ${STEP_WATTS} W at each duration, dated to the first ride that held it. ` +
+        "Your own target is reached by the first ride after you set it.",
+    }),
+    ...(note ? [note] : []),
+    el("table", { class: "recordtable milestonetable" }, [el("tbody", {}, rows)]),
+  ]);
+}
+
+function machineSection(
+  machine: MachineRecords,
+  recentSince: Date,
+  onExclude: OnExclude,
+  allRides: readonly Workout[],
+  targets: readonly Target[],
+  actions: TargetActions,
+): HTMLElement {
   const byWindow = new Map(machine.records.map((record) => [record.windowSeconds, record]));
   return el("section", { class: "card recordspage" }, [
     el("figcaption", {}, [
       el("h2", { text: machineLabel(machine.machineType) }),
       el("span", {
         class: "unit",
-        text: `${machine.rides} ride${machine.rides === 1 ? "" : "s"}, ${fullDate(machine.first)} to ${fullDate(machine.last)}`,
+        text: `${machine.workouts.length} ride${machine.workouts.length === 1 ? "" : "s"}, ${fullDate(machine.first)} to ${fullDate(machine.last)}`,
       }),
     ]),
-    targetLine(nextTarget(machine.records), machine.last < recentSince ? recentSince : null),
+    targetLine(suggestNext(machine.records), machine.last < recentSince ? recentSince : null),
     el(
       "div",
       { class: "groups" },
@@ -245,6 +434,7 @@ function machineSection(machine: MachineRecords, recentSince: Date, onExclude: O
         ),
       ),
     ),
+    milestonesBlock(machine, allRides, targets, actions),
   ]);
 }
 
@@ -261,17 +451,10 @@ function excludedSection(
   const rows = excluded.map((ride) => {
     const workout = byId.get(ride.id);
     const name = workout
-      ? [el("a", { href: `/workouts/${workout.routeId}`, text: fullDate(ride.startedAt) }), ` · ${machineLabel(workout.machineType)}`]
+      ? [rideLink(workout, fullDate), ` · ${machineLabel(workout.machineType)}`]
       : [fullDate(ride.startedAt)];
     const item = el("li", {}, [el("span", {}, name)]);
-    if (onInclude) {
-      const button = el("button", { type: "button", class: "secondary", text: "Count again" });
-      button.addEventListener("click", () => {
-        button.disabled = true;
-        onInclude(ride.id);
-      });
-      item.append(button);
-    }
+    if (onInclude) item.append(actionButton({ class: "secondary", text: "Count again" }, () => onInclude(ride.id)));
     return item;
   });
   return el("section", { class: "card excludedrides" }, [
@@ -290,63 +473,87 @@ function excludedSection(
 export interface RecordsPageOptions {
   onShowStock: () => void;
   /** Exclude a ride from records. Without it, the page offers no exclusion. */
-  onExclude?: (ride: { id: string; startedAt: Date }) => void;
+  onExclude?: ((ride: { id: string; startedAt: Date }) => void) | undefined;
   /** Count an excluded ride again. */
-  onInclude?: (id: string) => void;
+  onInclude?: ((id: string) => void) | undefined;
+  /** Set the rider's own target for one duration. Without it, no way to set one. */
+  onSetTarget?: ((target: Omit<Target, "setAt">) => void) | undefined;
+  /** Clear the rider's own target for one duration. */
+  onClearTarget?: ((slot: { machineType: string; windowSeconds: number }) => void) | undefined;
   /** Present when the page was opened from a ride: a way back to it. */
-  onBackToRide?: () => void;
+  onBackToRide?: (() => void) | undefined;
   /** Today. Passed in so the page is a function of its arguments. */
   now: Date;
 }
 
 /**
- * The page, in its loading state; it fills in when `input` resolves. Rides on
- * machines this extension does not handle are left out before it is called.
+ * The page. Given a promise, it renders in its loading state and fills in when the
+ * promise resolves; given the data, it renders filled, which is what a re-render
+ * after a rider's own action wants (the sheet keeps its scroll position only if the
+ * content is there when it is put on screen). Rides on machines this extension does
+ * not handle are left out before it is called.
  */
-export function renderRecordsPage(input: Promise<RecordsInput>, options: RecordsPageOptions): HTMLElement {
+export function renderRecordsPage(input: RecordsInput | Promise<RecordsInput>, options: RecordsPageOptions): HTMLElement {
   const recentSince = new Date(options.now.getTime() - RECENT_DAYS * 86_400_000);
   const body = el("div", { class: "page", "aria-live": "polite" }, [
     el("p", { class: "lede", text: "Loading your history…" }),
   ]);
 
-  const back = options.onBackToRide
-    ? (() => {
-        const button = el("button", { type: "button", class: "backtoride", text: "Back to ride" });
-        button.addEventListener("click", options.onBackToRide);
-        return [button];
-      })()
-    : [];
+  const back: HTMLElement[] = [];
+  if (options.onBackToRide) {
+    const button = el("button", { type: "button", class: "backtoride", text: "Back to ride" });
+    button.addEventListener("click", options.onBackToRide);
+    back.push(button);
+  }
 
-  // `catch` after `then`, so a failure while drawing the page also lands on the
-  // failure message rather than leaving it loading forever.
-  input
-    .then(({ workouts, truncated, excluded }) => {
-      const excludedIds = new Set(excluded.map((ride) => ride.id));
-      const counted = workouts.filter((workout) => !excludedIds.has(workout.id));
-      const machines = machineRecords(counted, recentSince);
-      const onExclude: OnExclude = options.onExclude
-        ? (point) => options.onExclude!({ id: point.workoutId, startedAt: point.startedAt })
-        : undefined;
-      const lede =
-        "Your best mean power per duration, from every ride in your history, next to your best since " +
-        `${fullDate(recentSince)}. Durations are whole 10-second samples, so 30 s is three readings. ` +
-        "Each machine type has its own records, because their watts are not known to be comparable.";
-      body.replaceChildren(
-        el("p", { class: "lede", text: lede }),
-        ...(truncated
-          ? [el("p", { class: "lede", text: "The API reported more history than it sent, so an older record may be missing." })]
-          : []),
-        ...(machines.length > 0
-          ? machines.map((machine) => machineSection(machine, recentSince, onExclude))
-          : [el("p", { class: "lede", text: "No rides in your history yet." })]),
-        ...(excluded.length > 0 ? [excludedSection(excluded, workouts, options.onInclude)] : []),
-      );
-    })
-    .catch(() => {
-      body.replaceChildren(
-        el("p", { class: "lede", text: "Could not load your history, so there are no records to show. Try again later." }),
-      );
-    });
+  const fill = ({ workouts, truncated, excluded, targets }: RecordsInput): void => {
+    const excludedIds = new Set(excluded.map((ride) => ride.id));
+    const counted = workouts.filter((workout) => !excludedIds.has(workout.id));
+    const machines = machineRecords(counted, recentSince);
+    const onExclude: OnExclude = options.onExclude
+      ? (point) => options.onExclude!({ id: point.workoutId, startedAt: point.startedAt })
+      : undefined;
+    const lede =
+      "Your best mean power per duration, from every ride in your history, next to your best since " +
+      `${fullDate(recentSince)}. Durations are whole 10-second samples, so 30 s is three readings. ` +
+      "Each machine type has its own records, because their watts are not known to be comparable.";
+    body.replaceChildren(
+      el("p", { class: "lede", text: lede }),
+      ...(truncated
+        ? [el("p", { class: "lede", text: "The API reported more history than it sent, so an older record may be missing." })]
+        : []),
+      ...(machines.length > 0
+        ? machines.map((machine) =>
+            machineSection(
+              machine,
+              recentSince,
+              onExclude,
+              workouts.filter((workout) => workout.machineType === machine.machineType),
+              targets,
+              { onSet: options.onSetTarget, onClear: options.onClearTarget },
+            ),
+          )
+        : [el("p", { class: "lede", text: "No rides in your history yet." })]),
+      ...(excluded.length > 0 ? [excludedSection(excluded, workouts, options.onInclude)] : []),
+    );
+  };
+  const failed = (): void => {
+    body.replaceChildren(
+      el("p", { class: "lede", text: "Could not load your history, so there are no records to show. Try again later." }),
+    );
+  };
+
+  if (input instanceof Promise) {
+    // `catch` after `then`, so a failure while drawing the page also lands on the
+    // failure message rather than leaving it loading forever.
+    input.then(fill).catch(failed);
+  } else {
+    try {
+      fill(input);
+    } catch {
+      failed();
+    }
+  }
 
   return el("div", { class: "wrap" }, [
     topBar(options.onShowStock, "Records", back),

@@ -47,11 +47,25 @@ rather than a task belongs in AGENTS.md instead.
 ## Views
 
 - [ ] **Records: what is still missing.** The ride's records section, the records
-      page and excluding a bad ride are built (experimental). Before targets or
-      milestones that are *stored*, decide what is frozen once earned, and what an
-      exclusion does to a milestone it already earned. Anything stored has to be
-      visible and clearable on the options page. The records page might also move
-      into the list-page replacement below, once that exists.
+      page, excluding a bad ride, and milestones with the rider's own targets are
+      built (experimental). Open, from the 1 Nov 2026 review:
+      - **Domain rules into core.** Which rides are comparable (same machine type,
+        earlier, not excluded: `compareRide`), the milestone ladder, target status
+        and `suggestNext` are pure logic in the view layer. The MCP server and the
+        app would each re-implement them and could disagree. Move them to core's
+        `analysis/` once the rules stop moving.
+      - **React to `chrome.storage.onChanged`** in the content script, as the
+        options page does, and re-render only the data part of the view. That
+        replaces the hand-written re-render after each change, and makes a clear
+        on the options page show up live in an open tab.
+      - **One storage key per excluded ride and per target.** Removes the
+        read-modify-write that `serially` orders within one page but cannot order
+        between a tab and the options page.
+      - **Shared test helpers** (the fixture loader, the `ride(...)` builder, the
+        `chrome.storage` stand-in). `layers.test.ts` claims every directory under
+        `src/`, so they need a home it allows.
+      Also: whether the records page moves into the list-page replacement below,
+      once that exists.
 
 - [ ] **Use the history the API already returns.** `fetchWorkoutHistory` fetches every
       ride on the account and we render exactly one of them. Nothing cross-ride exists

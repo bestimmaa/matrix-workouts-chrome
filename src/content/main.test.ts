@@ -200,7 +200,28 @@ describe("the content script", () => {
     expect(stored.has("excludedRides")).toBe(false);
   });
 
-  it("fetches the history again when the site has cached a ride it lacks, but only once", async () => {
+  it("sets a target on the records page, stores it, and clears it again", async () => {
+    toggle();
+    await settle();
+    const row = () =>
+      [...sheet().querySelectorAll(".recordspage")][0]!
+        .querySelectorAll(".milestonetable tr")[5]!; // 60 min
+    row().querySelector<HTMLButtonElement>(".owntarget button")!.click();
+    const input = row().querySelector("input")!;
+    input.value = String(Number(input.min) + 10);
+    row().querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+    await settle();
+    const stored_ = stored.get("recordTargets") as { windowSeconds: number; watts: number }[];
+    expect(stored_).toEqual([expect.objectContaining({ windowSeconds: 3600, watts: Number(input.min) + 10 })]);
+    expect(row().textContent).toContain(`Your target ${Number(input.min) + 10} W`);
+
+    row().querySelector<HTMLButtonElement>(".owntarget button")!.click();
+    await settle();
+    expect(stored.has("recordTargets")).toBe(false);
+    showStock();
+  });
+
+  it("counts a ride the site cached after the history was fetched, without asking the API again", async () => {
     const calls = loadHistory.mock.calls.length;
     // The rider has ridden since the history was fetched: the site's cache gains a
     // ride under a new id that the fetched history does not hold.
@@ -208,23 +229,12 @@ describe("the content script", () => {
     const store = JSON.parse(root["userStore"]!) as { workouts: Record<string, unknown>[] };
     store.workouts.push({ ...store.workouts[0]!, workoutId: "new-ride", id: "new-ride", workoutTime: "2026-09-20T07:00:00.000Z" });
     localStorage.setItem(PERSIST_KEY, JSON.stringify({ ...root, userStore: JSON.stringify(store) }));
-    // The API does not have it yet either, so the refetch cannot fill the gap: it
-    // returns the older rides, as before.
-    loadHistory.mockImplementation(async () => ({
-      workouts: loadCachedWorkouts(localStorage).filter((workout) => workout.id !== "new-ride"),
-      truncated: false,
-      skipped: 0,
-    }));
 
-    go(`/workouts/${SPRINT}`);
-    pill().click();
+    toggle();
     await settle();
-    expect(loadHistory.mock.calls.length).toBe(calls + 1);
-
-    go(`/workouts/${VIRTUAL}`);
-    await settle();
-    // Asking again on every ride would not change what the API returns.
-    expect(loadHistory.mock.calls.length).toBe(calls + 1);
+    // Nine upright rides in the fixture cache, and the new one.
+    expect(sheet().querySelector(".recordspage .unit")?.textContent).toMatch(/^10 rides,/);
+    expect(loadHistory.mock.calls.length).toBe(calls);
     showStock();
   });
 

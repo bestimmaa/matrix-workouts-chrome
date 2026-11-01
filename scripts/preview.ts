@@ -34,6 +34,13 @@ const ids = process.argv.slice(2).length
 
 mkdirSync(resolve(process.cwd(), "preview"), { recursive: true });
 
+// Two targets of the rider's own: one set early enough to read as reached by the
+// 13 Sep ride, one still open.
+const targets = [
+  { machineType: "upright_bike", windowSeconds: 1200, watts: 160, setAt: new Date("2026-09-11T00:00:00Z") },
+  { machineType: "upright_bike", windowSeconds: 300, watts: 240, setAt: new Date("2026-09-14T00:00:00Z") },
+];
+
 // Every fixture stands in for the rider's history, so the records section has
 // earlier rides to compare against, the way the full history gives it in the tab.
 const history = readdirSync(resolve(process.cwd(), "fixtures"))
@@ -48,7 +55,7 @@ for (const id of ids) {
   const view = renderDashboard(workout, {
     onShowStock: () => {},
     sendToStrava: async () => ({ kind: "failed" }),
-    records: Promise.resolve(compareRide(workout, history)),
+    records: Promise.resolve(compareRide(workout, history, { targets })),
     onShowRecords: () => {},
     onToggleExcluded: () => {},
   });
@@ -78,11 +85,13 @@ for (const id of ids) {
   const latest = Math.max(...history.map((w) => w.startedAt.getTime()));
   // One ride excluded, so the page shows the excluded list and a record standing in.
   const excluded = history.filter((w) => w.id === "6a5e4fe418e8655524aebab4");
-  const view = renderRecordsPage(Promise.resolve({ workouts: history, truncated: false, excluded }), {
+  const view = renderRecordsPage(Promise.resolve({ workouts: history, truncated: false, excluded, targets }), {
     onShowStock: () => {},
     onBackToRide: () => {},
     onExclude: () => {},
     onInclude: () => {},
+    onSetTarget: () => {},
+    onClearTarget: () => {},
     now: new Date(latest + 21 * 86_400_000),
   });
   await new Promise((done) => setTimeout(done, 0));
