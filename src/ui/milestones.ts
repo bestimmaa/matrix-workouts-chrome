@@ -1,4 +1,4 @@
-import { beats, bestEffort, type PowerCurvePoint, type Workout } from "matrix-workouts-core";
+import { beats, bestEffort, shownWatts as shown, type PowerCurvePoint, type Workout } from "matrix-workouts-core";
 
 /**
  * Milestones and the rider's own targets, worked out from the history.
@@ -22,16 +22,14 @@ import { beats, bestEffort, type PowerCurvePoint, type Workout } from "matrix-wo
  * was set whose best effort holds it. Rides before it was set cannot reach it: the
  * page only lets a target be set above the current best.
  *
- * Every comparison is on rounded watts, as everywhere else in the records: a step is
- * reached when the effort *displays* at or above it.
+ * Every comparison is on core's `shownWatts`, as everywhere else in the records: a
+ * step is reached when the effort *displays* at or above it.
  */
 
 export const STEP_WATTS = 25;
 
 /** The largest target accepted, watts. Far above anything a console has recorded. */
 export const MAX_TARGET_WATTS = 2000;
-
-const shown = (point: PowerCurvePoint): number => Math.round(point.watts);
 
 /** One ride's best effort at one duration, for each ride that has one, oldest first. */
 function effortsInOrder(rides: readonly Workout[], windowSeconds: number): PowerCurvePoint[] {
@@ -102,6 +100,7 @@ export function exclusionChanges(
   counted: readonly Workout[],
   windowsSeconds: readonly number[],
 ): MilestoneChange[] {
+  if (counted.length === allRides.length) return [];
   const countedIds = new Set(counted.map((ride) => ride.id));
   return windowsSeconds.flatMap((windowSeconds) => {
     const now = new Map(ladder(counted, windowSeconds).earned.map((m) => [m.watts, m.effort]));

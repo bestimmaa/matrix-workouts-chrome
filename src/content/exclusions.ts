@@ -13,6 +13,8 @@
  * the history: no power, no heart rate, nothing from the ride itself.
  */
 
+import { chromeList, readList, serially, writeList, type ListStorage } from "./storedList.js";
+
 export const EXCLUDED_KEY = "excludedRides";
 
 export interface ExcludedRide {
@@ -24,18 +26,9 @@ export interface ExcludedRide {
   excludedAt: string;
 }
 
-/** Storage, injected so the rules here are tested without `chrome`. */
-export interface ExclusionStorage {
-  load(): Promise<unknown>;
-  save(rides: ExcludedRide[]): Promise<void>;
-  clear(): Promise<void>;
-}
+export type ExclusionStorage = ListStorage<ExcludedRide>;
 
-export const chromeExclusions: ExclusionStorage = {
-  load: async () => (await chrome.storage.local.get(EXCLUDED_KEY))[EXCLUDED_KEY],
-  save: (rides) => chrome.storage.local.set({ [EXCLUDED_KEY]: rides }),
-  clear: () => chrome.storage.local.remove(EXCLUDED_KEY),
-};
+export const chromeExclusions: ExclusionStorage = chromeList(EXCLUDED_KEY);
 
 const isExcludedRide = (value: unknown): value is ExcludedRide => {
   const v = value as Partial<ExcludedRide> | null;
@@ -48,30 +41,11 @@ const isExcludedRide = (value: unknown): value is ExcludedRide => {
   );
 };
 
-/**
- * What is stored, oldest ride first. Anything unreadable is dropped rather than
- * thrown: a broken entry must not stop the records from drawing.
- */
-export async function loadExcluded(storage: ExclusionStorage): Promise<ExcludedRide[]> {
-  const stored = await storage.load();
-  if (!Array.isArray(stored)) return [];
-  return stored.filter(isExcludedRide).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-}
+const oldestFirst = (a: ExcludedRide, b: ExcludedRide): number => a.startedAt.localeCompare(b.startedAt);
 
-/**
- * Run read-modify-write changes one after another. Two quick clicks (× on two
- * records) would otherwise both read the list before either saved, and the second
- * save would silently undo the first. This orders the writes made from one page;
- * a tab and the options page are separate pages and can still interleave, which
- * needs two people's worth of clicking at once.
- */
-export function serially(): <T>(change: () => Promise<T>) => Promise<T> {
-  let last: Promise<unknown> = Promise.resolve();
-  return (change) => {
-    const run = last.then(change, change);
-    last = run.catch(() => undefined);
-    return run;
-  };
+/** What is stored, oldest ride first. */
+export function loadExcluded(storage: ExclusionStorage): Promise<ExcludedRide[]> {
+  return readList(storage, isExcludedRide, oldestFirst);
 }
 
 const inOrder = serially();
@@ -86,8 +60,8 @@ export function exclude(
     const rides = await loadExcluded(storage);
     if (rides.some((r) => r.id === ride.id)) return rides;
     const next = [...rides, { id: ride.id, startedAt: ride.startedAt.toISOString(), excludedAt: now.toISOString() }];
-    await storage.save(next);
-    return loadExcluded(storage);
+    await writeList(storage, next);
+    return next.sort(oldestFirst);
   });
 }
 
@@ -95,8 +69,7 @@ export function exclude(
 export function include(storage: ExclusionStorage, id: string): Promise<ExcludedRide[]> {
   return inOrder(async () => {
     const next = (await loadExcluded(storage)).filter((r) => r.id !== id);
-    if (next.length === 0) await storage.clear();
-    else await storage.save(next);
+    await writeList(storage, next);
     return next;
   });
 }

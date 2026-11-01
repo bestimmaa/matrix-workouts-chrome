@@ -13,7 +13,7 @@
  */
 
 import { MAX_TARGET_WATTS } from "../ui/milestones.js";
-import { serially } from "./exclusions.js";
+import { chromeList, readList, serially, writeList, type ListStorage } from "./storedList.js";
 
 export const TARGETS_KEY = "recordTargets";
 
@@ -26,18 +26,9 @@ export interface StoredTarget {
   setAt: string;
 }
 
-/** Storage, injected so the rules here are tested without `chrome`. */
-export interface TargetStorage {
-  load(): Promise<unknown>;
-  save(targets: StoredTarget[]): Promise<void>;
-  clear(): Promise<void>;
-}
+export type TargetStorage = ListStorage<StoredTarget>;
 
-export const chromeTargets: TargetStorage = {
-  load: async () => (await chrome.storage.local.get(TARGETS_KEY))[TARGETS_KEY],
-  save: (targets) => chrome.storage.local.set({ [TARGETS_KEY]: targets }),
-  clear: () => chrome.storage.local.remove(TARGETS_KEY),
-};
+export const chromeTargets: TargetStorage = chromeList(TARGETS_KEY);
 
 const isStoredTarget = (value: unknown): value is StoredTarget => {
   const v = value as Partial<StoredTarget> | null;
@@ -56,14 +47,14 @@ const isStoredTarget = (value: unknown): value is StoredTarget => {
 const sameSlot = (a: Pick<StoredTarget, "machineType" | "windowSeconds">, b: typeof a): boolean =>
   a.machineType === b.machineType && a.windowSeconds === b.windowSeconds;
 
-/** What is stored. Anything unreadable is dropped: it must not stop the records drawing. */
-export async function loadTargets(storage: TargetStorage): Promise<StoredTarget[]> {
-  const stored = await storage.load();
-  if (!Array.isArray(stored)) return [];
-  return stored.filter(isStoredTarget).sort((a, b) => a.machineType.localeCompare(b.machineType) || a.windowSeconds - b.windowSeconds);
+const bySlot = (a: StoredTarget, b: StoredTarget): number =>
+  a.machineType.localeCompare(b.machineType) || a.windowSeconds - b.windowSeconds;
+
+/** What is stored, by machine type and then duration. */
+export function loadTargets(storage: TargetStorage): Promise<StoredTarget[]> {
+  return readList(storage, isStoredTarget, bySlot);
 }
 
-/** Writes from one page, one after another; see `serially` for why. */
 const inOrder = serially();
 
 /** Set the target for one duration on one machine type, replacing any there was. */
@@ -78,8 +69,9 @@ export function setTarget(
   }
   return inOrder(async () => {
     const kept = (await loadTargets(storage)).filter((t) => !sameSlot(t, target));
-    await storage.save([...kept, next]);
-    return loadTargets(storage);
+    const targets = [...kept, next].sort(bySlot);
+    await writeList(storage, targets);
+    return targets;
   });
 }
 
@@ -90,8 +82,7 @@ export function clearTarget(
 ): Promise<StoredTarget[]> {
   return inOrder(async () => {
     const kept = (await loadTargets(storage)).filter((t) => !sameSlot(t, slot));
-    if (kept.length === 0) await storage.clear();
-    else await storage.save(kept);
+    await writeList(storage, kept);
     return kept;
   });
 }

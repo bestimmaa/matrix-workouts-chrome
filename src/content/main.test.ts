@@ -221,7 +221,7 @@ describe("the content script", () => {
     showStock();
   });
 
-  it("fetches the history again when the site has cached a ride it lacks, but only once", async () => {
+  it("counts a ride the site cached after the history was fetched, without asking the API again", async () => {
     const calls = loadHistory.mock.calls.length;
     // The rider has ridden since the history was fetched: the site's cache gains a
     // ride under a new id that the fetched history does not hold.
@@ -229,23 +229,12 @@ describe("the content script", () => {
     const store = JSON.parse(root["userStore"]!) as { workouts: Record<string, unknown>[] };
     store.workouts.push({ ...store.workouts[0]!, workoutId: "new-ride", id: "new-ride", workoutTime: "2026-09-20T07:00:00.000Z" });
     localStorage.setItem(PERSIST_KEY, JSON.stringify({ ...root, userStore: JSON.stringify(store) }));
-    // The API does not have it yet either, so the refetch cannot fill the gap: it
-    // returns the older rides, as before.
-    loadHistory.mockImplementation(async () => ({
-      workouts: loadCachedWorkouts(localStorage).filter((workout) => workout.id !== "new-ride"),
-      truncated: false,
-      skipped: 0,
-    }));
 
-    go(`/workouts/${SPRINT}`);
-    pill().click();
+    toggle();
     await settle();
-    expect(loadHistory.mock.calls.length).toBe(calls + 1);
-
-    go(`/workouts/${VIRTUAL}`);
-    await settle();
-    // Asking again on every ride would not change what the API returns.
-    expect(loadHistory.mock.calls.length).toBe(calls + 1);
+    // Nine upright rides in the fixture cache, and the new one.
+    expect(sheet().querySelector(".recordspage .unit")?.textContent).toMatch(/^10 rides,/);
+    expect(loadHistory.mock.calls.length).toBe(calls);
     showStock();
   });
 

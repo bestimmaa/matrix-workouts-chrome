@@ -505,14 +505,13 @@ footer { color: var(--ink-3); font-family: var(--alt); font-size: 13px; line-hei
 .records-card p.note { font-size: 11.5px; color: var(--ink-3); margin: 0 0 2px 18px; }
 .records-card .pending { color: var(--ink-3); }
 .records-card a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
-.records-card .allrecords { margin-top: 14px; }
 
 /* ---- records page: best ever against the last 8 weeks, per machine type ---- */
 .recordspage .target { font-family: var(--alt); font-size: 15px; color: var(--ink-2); line-height: 1.5; margin: 12px 0 4px; }
 .recordspage .target strong { color: var(--ink); }
 .recordspage a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 14px; }
-.group h3 {
+.group h3, .milestones h3 {
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -538,7 +537,6 @@ footer { color: var(--ink-3); font-family: var(--alt); font-size: 13px; line-hei
 button.secondary, button.secondary:hover { background: transparent; color: var(--ink); border: 1px solid var(--rule); }
 button.secondary:disabled { color: var(--ink-3); }
 .recordbuttons { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
-.records-card .recordbuttons .allrecords { margin-top: 0; }
 .excludeeffort, .excludeeffort:hover {
   background: transparent;
   color: var(--ink-3);
@@ -560,15 +558,6 @@ button.secondary:disabled { color: var(--ink-3); }
 
 /* ---- milestones and the rider's own targets ---- */
 .milestones { margin-top: 22px; }
-.milestones h3 {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  margin: 0 0 6px;
-  padding-bottom: 6px;
-  border-bottom: 3px solid var(--machine);
-}
 .milestones .explain, .milestones .changes { font-family: var(--alt); font-size: 12.5px; color: var(--ink-3); margin: 0 0 6px; }
 .milestones .changes { color: var(--ink-2); }
 .milestonetable td { white-space: normal; }
@@ -577,16 +566,8 @@ button.secondary:disabled { color: var(--ink-3); }
 .milestonetable .next { font-family: var(--alt); color: var(--ink-3); }
 .milestonetable .owntarget { font-family: var(--alt); color: var(--ink-2); }
 .milestonetable .owntarget strong { color: var(--ink); }
-.milestonetable a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
-.linkbutton, .linkbutton:hover {
-  background: transparent;
-  color: var(--ink);
-  border: 1px solid var(--rule);
-  padding: 3px 9px;
-  font-size: 11px;
-  margin-left: 4px;
-}
-.linkbutton:disabled { color: var(--ink-3); background: transparent; }
+/* A small secondary button, inside a table cell: always worn with `secondary`. */
+.linkbutton { padding: 3px 9px; font-size: 11px; margin-left: 4px; }
 .targetform { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .targetform input { width: 72px; padding: 4px 6px; font: 13px var(--mono); border: 1px solid var(--rule); border-radius: 0; background: var(--plane); color: var(--ink); }
 .formerror { color: var(--brand); font-size: 12px; }

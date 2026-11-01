@@ -34,7 +34,7 @@ describe("machineRecords", () => {
   it("keeps each machine type's records apart, most-ridden first", () => {
     const machines = machineRecords(all(), SINCE);
     expect(machines.map((m) => m.machineType)).toEqual(["upright_bike", "recumbent_bike"]);
-    expect(machines[1]?.rides).toBe(1);
+    expect(machines[1]?.workouts.length).toBe(1);
     expect(machines[0]?.records.map((r) => r.windowSeconds)).toEqual([...RECORD_WINDOWS_SECONDS]);
   });
 

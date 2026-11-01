@@ -169,7 +169,9 @@ A record cannot be judged against the site's cached week. The request is the sam
 GET to `apollo.jfit.co` that *Load full history* makes, it is made only after the
 rider has opened the view, and its answer stays in memory like any other history.
 `ensureHistory` in `src/content/main.ts` holds the one request both paths share; a
-failed request is forgotten so the next ride asks again.
+failed request is forgotten so the next ride asks again. It also merges in any ride
+the site has cached since the fetch (ridden with the tab open), so a new ride is in
+the records page as well as on its own page, with no second request.
 
 Also built, **experimental**: the **records page** (`src/ui/recordsPage.ts`). For
 each machine type it shows every duration's best ever next to its best in the last

@@ -26,3 +26,16 @@ function fill<T extends Element>(node: T, attrs: Record<string, string>, childre
   node.append(...children);
   return node;
 }
+
+/**
+ * A button that disables itself when pressed, then calls `onClick`. For an action
+ * whose result re-renders the view: a second press before then would act twice.
+ */
+export function actionButton(attrs: Record<string, string>, onClick: () => void): HTMLButtonElement {
+  const button = el("button", { type: "button", ...attrs });
+  button.addEventListener("click", () => {
+    button.disabled = true;
+    onClick();
+  });
+  return button;
+}

@@ -1,7 +1,7 @@
-import { rideRecords, type PowerCurvePoint, type RideRecord, type Workout } from "matrix-workouts-core";
+import { rideRecords, shownWatts, type PowerCurvePoint, type RideRecord, type Workout } from "matrix-workouts-core";
 import { clock, shortDate, wattsText } from "./format.js";
 import { milestonesEarnedBy, targetState, type Milestone, type Target, type TargetState } from "./milestones.js";
-import { el } from "./svg.js";
+import { actionButton, el } from "./svg.js";
 
 /**
  * The post-ride records line: what this ride did against every earlier ride.
@@ -64,7 +64,7 @@ export function compareRide(
   const excluded = excludedIds.has(workout.id);
   // Who earned a milestone or reached a target first depends only on rides up to
   // this one, so the verdict does not change as the history grows past it.
-  const upToHere = excluded ? counted : [...counted, workout];
+  const upToHere = [...counted, workout];
   return {
     records: rideRecords(workout, counted, RECORD_WINDOWS_SECONDS),
     compared: counted.length,
@@ -88,9 +88,12 @@ export function windowLabel(seconds: number): string {
 
 const watts = (point: PowerCurvePoint): string => wattsText(point.watts);
 
-/** A link to the ride a record came from, so every number can be checked. */
-function rideLink(point: PowerCurvePoint): HTMLElement {
-  return el("a", { href: `/workouts/${point.routeId}`, text: shortDate(point.startedAt) });
+/** A link to the ride an effort came from, so every number can be checked. */
+export function rideLink(
+  ride: Pick<PowerCurvePoint, "routeId" | "startedAt">,
+  date: (date: Date) => string = shortDate,
+): HTMLElement {
+  return el("a", { href: `/workouts/${ride.routeId}`, text: date(ride.startedAt) });
 }
 
 /** One line per first effort or new record, in window order. */
@@ -106,7 +109,7 @@ function achievement(record: RideRecord): HTMLElement | null {
     ]);
   }
   if (record.outcome === "record" && record.previous) {
-    const gain = Math.round(effort.watts) - Math.round(record.previous.watts);
+    const gain = shownWatts(effort) - shownWatts(record.previous);
     return el("li", { class: "record" }, [
       el("strong", { text: `New ${windowLabel(record.windowSeconds)} best` }),
       ` ${watts(effort)}, ${at}: up ${gain} W on ${watts(record.previous)} from `,
@@ -133,7 +136,7 @@ function nearest(records: readonly RideRecord[]): HTMLElement | null {
   }
   if (!best?.effort || !best.previous) return null;
   // Below the record means at most level with it, on the rounded figures shown.
-  const short = Math.round(best.previous.watts) - Math.round(best.effort.watts);
+  const short = shownWatts(best.previous) - shownWatts(best.effort);
   return el("p", { class: "nearest" }, [
     `Closest to a record: ${windowLabel(best.windowSeconds)} at ${watts(best.effort)}, ` +
       (short > 0 ? `${short} W short of` : "level with") +
@@ -197,9 +200,12 @@ export interface RecordsSection {
 
 export interface RecordsSectionOptions {
   /** Open the records page. Without it, no button to it. */
-  onShowAll?: () => void;
-  /** Exclude this ride from records, or count it again. Without it, no button. */
-  onToggleExcluded?: () => void;
+  onShowRecords?: (() => void) | undefined;
+  /**
+   * Exclude this ride from records (`excluded` false), or count it again (true).
+   * Without it, no button.
+   */
+  onToggleExcluded?: ((excluded: boolean) => void) | undefined;
 }
 
 /**
@@ -207,29 +213,28 @@ export interface RecordsSectionOptions {
  * arrives. A filled section ends with its buttons: to the records page, and to
  * exclude the ride (or include it again).
  */
-export function recordsSection({ onShowAll, onToggleExcluded }: RecordsSectionOptions = {}): RecordsSection {
+export function recordsSection({ onShowRecords, onToggleExcluded }: RecordsSectionOptions = {}): RecordsSection {
   const buttons = (excluded: boolean): Node[] => {
     const row: HTMLElement[] = [];
-    if (onShowAll) {
+    if (onShowRecords) {
       const button = el("button", { type: "button", class: "allrecords", text: "All records" });
-      button.addEventListener("click", onShowAll);
+      button.addEventListener("click", onShowRecords);
       row.push(button);
     }
     if (onToggleExcluded) {
-      const button = el("button", {
-        type: "button",
-        class: "exclude secondary",
-        text: excluded ? "Count in records again" : "Exclude from records",
-        title: excluded
-          ? "Count this ride in records again. Its efforts can be records once more."
-          : "If this ride's power looks wrong, exclude it: none of its efforts count as a record, " +
-            "and the next best takes their place. Undo any time, here or on the options page.",
-      });
-      button.addEventListener("click", () => {
-        button.disabled = true;
-        onToggleExcluded();
-      });
-      row.push(button);
+      row.push(
+        actionButton(
+          {
+            class: "exclude secondary",
+            text: excluded ? "Count in records again" : "Exclude from records",
+            title: excluded
+              ? "Count this ride in records again. Its efforts can be records once more."
+              : "If this ride's power looks wrong, exclude it: none of its efforts count as a record, " +
+                "and the next best takes their place. Undo any time, here or on the options page.",
+          },
+          () => onToggleExcluded(excluded),
+        ),
+      );
     }
     return row.length ? [el("div", { class: "recordbuttons" }, row)] : [];
   };

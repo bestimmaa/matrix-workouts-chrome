@@ -54,38 +54,33 @@ let history: Workout[] | null = null;
 let historyRequest: Promise<HistoryResult> | null = null;
 
 /**
- * The history, fetched once per tab and fetched again only when it is visibly out of
- * date: the site's own cache holds a ride the fetched history does not, because the
- * rider has ridden since. Without that, a new ride would be judged a record on its
- * own page and be missing from the records page in the same tab.
+ * The history: fetched once per tab, plus any ride the site has cached since. The
+ * rider may ride again with the tab open, and the site's own cache then holds a ride
+ * the fetched history does not. Without it, a new ride would be judged a record on
+ * its own page and be missing from the records page in the same tab. Merging the
+ * cache in needs no second request, and covers a ride the API has not caught up on.
  */
 function ensureHistory(): Promise<HistoryResult> {
-  return requestHistory().then((result) => {
-    const missing = cachedRidesMissingFrom(result);
-    // Once per set of missing rides: if the API does not return a ride the cache
-    // holds, asking again on every ride opened would not change that.
-    if (!missing || missing === refetchedFor) return result;
-    refetchedFor = missing;
-    historyRequest = null;
-    return requestHistory();
-  });
+  return requestHistory().then(withCachedRides);
 }
 
-/** The cached rides the history lacks, as one key, or `""` when it lacks none. */
-let refetchedFor = "";
+/** The site's cached rides, parsed again only when the cache itself changes. */
+let cache: { blob: string | null; rides: Workout[] } = { blob: null, rides: [] };
 
-function cachedRidesMissingFrom(result: HistoryResult): string {
-  try {
-    const held = new Set(result.workouts.map((workout) => workout.id));
-    return loadCachedWorkouts(localStorage)
-      .map((workout) => workout.id)
-      .filter((id) => !held.has(id))
-      .sort()
-      .join(",");
-  } catch {
-    // An unreadable cache says nothing about the history: keep what we have.
-    return "";
+function withCachedRides(result: HistoryResult): HistoryResult {
+  const blob = localStorage.getItem(PERSIST_KEY);
+  if (blob !== cache.blob) {
+    let rides: Workout[] = [];
+    try {
+      rides = loadCachedWorkouts(localStorage);
+    } catch {
+      // An unreadable cache adds nothing: keep the history as fetched.
+    }
+    cache = { blob, rides };
   }
+  const held = new Set(result.workouts.map((workout) => workout.id));
+  const added = cache.rides.filter((workout) => !held.has(workout.id));
+  return added.length > 0 ? { ...result, workouts: [...result.workouts, ...added] } : result;
 }
 
 function requestHistory(): Promise<HistoryResult> {
@@ -135,12 +130,6 @@ function targets(): Promise<Target[]> {
  */
 function excludedIds(): Promise<Set<string>> {
   return loadExcluded(chromeExclusions).then((rides) => new Set(rides.map((ride) => ride.id)));
-}
-
-/** Exclude a ride from records, or count it again if it is excluded. */
-async function toggleExcluded(workout: Workout): Promise<void> {
-  if ((await excludedIds()).has(workout.id)) await include(chromeExclusions, workout.id);
-  else await exclude(chromeExclusions, workout, new Date());
 }
 
 function ensureSurface(): Surface {
@@ -201,19 +190,33 @@ function shell(title: string, children: (Node | string)[], onBack: () => void): 
  */
 function showWorkout(view: Surface, id: string, workout: Workout, keepScroll = false): void {
   if (!isSupportedMachine(workout.machineType)) return outOfScope(view, workout.machineType);
-  // Re-render in place after an exclusion, unless the sheet has moved on since.
-  const again = () => {
-    if (dashboard.isConnected) showWorkout(view, id, workout, true);
+  // Re-render in place once an exclusion is stored, unless the sheet has moved on.
+  const after = (change: Promise<unknown>): void => {
+    const again = () => {
+      if (dashboard.isConnected) showWorkout(view, id, workout, true);
+    };
+    void change.then(again, again);
   };
   const dashboard = renderDashboard(workout, {
     onShowStock: showStock,
     sendToStrava: () => sendToStrava(workout),
     records: recordsFor(workout),
     onShowRecords: () => showRecords(view, () => showWorkout(view, id, workout)),
-    onToggleExcluded: () => void toggleExcluded(workout).then(again, again),
+    onToggleExcluded: (excluded) =>
+      after(excluded ? include(chromeExclusions, workout.id) : exclude(chromeExclusions, workout, new Date())),
   });
   view.render(dashboard, { keepScroll });
   renderedId = id;
+}
+
+/** Everything the records page is drawn from: the history, the exclusions, the targets. */
+function recordsInput(): Promise<RecordsInput> {
+  return Promise.all([ensureHistory(), loadExcluded(chromeExclusions), targets()]).then(([result, excluded, own]) => ({
+    workouts: result.workouts.filter((workout) => isSupportedMachine(workout.machineType)),
+    truncated: result.truncated,
+    excluded: excluded.map((ride) => ({ id: ride.id, startedAt: new Date(ride.startedAt) })),
+    targets: own,
+  }));
 }
 
 /**
@@ -221,29 +224,28 @@ function showWorkout(view: Surface, id: string, workout: Workout, keepScroll = f
  * with a way back to that ride, or from the toolbar icon anywhere else on the site.
  * Rides on machines this extension does not handle are left out, as everywhere else.
  */
-function showRecords(view: Surface, backToRide?: () => void, keepScroll = false): void {
-  const input: Promise<RecordsInput> = Promise.all([ensureHistory(), loadExcluded(chromeExclusions), targets()]).then(
-    ([result, excluded, own]) => ({
-      workouts: result.workouts.filter((workout) => isSupportedMachine(workout.machineType)),
-      truncated: result.truncated,
-      excluded: excluded.map((ride) => ({ id: ride.id, startedAt: new Date(ride.startedAt) })),
-      targets: own,
-    }),
-  );
-  // Re-render in place after an exclusion, unless the sheet has moved on since.
-  const again = () => {
-    if (page.isConnected) showRecords(view, backToRide, true);
+function showRecords(view: Surface, backToRide?: () => void, data?: RecordsInput): void {
+  // Once a change is stored, gather the data again and render the page already
+  // filled, so the sheet keeps its scroll position; unless it has moved on since.
+  const after = (change: Promise<unknown>): void => {
+    void change
+      .catch(() => undefined)
+      .then(recordsInput)
+      .then(
+        (fresh) => page.isConnected && showRecords(view, backToRide, fresh),
+        () => page.isConnected && showRecords(view, backToRide),
+      );
   };
-  const page = renderRecordsPage(input, {
+  const page = renderRecordsPage(data ?? recordsInput(), {
     onShowStock: showStock,
-    ...(backToRide ? { onBackToRide: backToRide } : {}),
-    onExclude: (ride) => void exclude(chromeExclusions, ride, new Date()).then(again, again),
-    onInclude: (id) => void include(chromeExclusions, id).then(again, again),
-    onSetTarget: (target) => void setTarget(chromeTargets, target, new Date()).then(again, again),
-    onClearTarget: (slot) => void clearTarget(chromeTargets, slot).then(again, again),
+    onBackToRide: backToRide,
+    onExclude: (ride) => after(exclude(chromeExclusions, ride, new Date())),
+    onInclude: (id) => after(include(chromeExclusions, id)),
+    onSetTarget: (target) => after(setTarget(chromeTargets, target, new Date())),
+    onClearTarget: (slot) => after(clearTarget(chromeTargets, slot)),
     now: new Date(),
   });
-  view.render(page, { keepScroll });
+  view.render(page, { keepScroll: data !== undefined });
   // Not a workout: a pill press on a ride route brings the ride back.
   renderedId = null;
 }
