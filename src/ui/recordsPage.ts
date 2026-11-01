@@ -1,4 +1,4 @@
-import { personalRecords, shownWatts, type PowerCurvePoint, type WindowRecord, type Workout } from "matrix-workouts-core";
+import { personalRecords, shownWatts, type PowerCurvePoint, type RiderSex, type WindowRecord, type Workout } from "matrix-workouts-core";
 import { topBar } from "./dashboard.js";
 import { fullDate, machineLabel, shortDate, wattsText } from "./format.js";
 import {
@@ -13,6 +13,7 @@ import {
   type Target,
 } from "./milestones.js";
 import { RECORD_WINDOWS_SECONDS, rideLink, windowLabel } from "./records.js";
+import { starBlock, type RiderSetting } from "./star.js";
 import { actionButton, el } from "./svg.js";
 
 /**
@@ -47,6 +48,8 @@ export interface RecordsInput {
   excluded: readonly { id: string; startedAt: Date }[];
   /** The rider's own targets, one per duration and machine type at most. */
   targets: readonly Target[];
+  /** Weight and table for the ceiling, and whether the rider set them or the profile did. */
+  rider: RiderSetting;
 }
 
 /** The records of one machine type, plus the rides they come from. */
@@ -125,6 +128,9 @@ export function suggestNext(records: readonly WindowRecord[]): Suggestion | null
   return null;
 }
 
+
+/** Store the rider's weight and table for the ceiling. Absent, the page offers no form. */
+type OnSetRider = ((rider: { weightKg: number; sex: RiderSex }) => void) | undefined;
 
 /** Exclude the ride an effort came from. Absent, the page offers no exclusion. */
 type OnExclude = ((point: PowerCurvePoint) => void) | undefined;
@@ -412,6 +418,8 @@ function machineSection(
   allRides: readonly Workout[],
   targets: readonly Target[],
   actions: TargetActions,
+  rider: RiderSetting,
+  onSetRider: OnSetRider,
 ): HTMLElement {
   const byWindow = new Map(machine.records.map((record) => [record.windowSeconds, record]));
   return el("section", { class: "card recordspage" }, [
@@ -423,6 +431,7 @@ function machineSection(
       }),
     ]),
     targetLine(suggestNext(machine.records), machine.last < recentSince ? recentSince : null),
+    starBlock(machine.records, rider, onSetRider),
     el(
       "div",
       { class: "groups" },
@@ -480,6 +489,8 @@ export interface RecordsPageOptions {
   onSetTarget?: ((target: Omit<Target, "setAt">) => void) | undefined;
   /** Clear the rider's own target for one duration. */
   onClearTarget?: ((slot: { machineType: string; windowSeconds: number }) => void) | undefined;
+  /** Store the rider's weight and table for the ceiling. Without it, no form. */
+  onSetRider?: OnSetRider;
   /** Present when the page was opened from a ride: a way back to it. */
   onBackToRide?: (() => void) | undefined;
   /** Today. Passed in so the page is a function of its arguments. */
@@ -506,7 +517,7 @@ export function renderRecordsPage(input: RecordsInput | Promise<RecordsInput>, o
     back.push(button);
   }
 
-  const fill = ({ workouts, truncated, excluded, targets }: RecordsInput): void => {
+  const fill = ({ workouts, truncated, excluded, targets, rider }: RecordsInput): void => {
     const excludedIds = new Set(excluded.map((ride) => ride.id));
     const counted = workouts.filter((workout) => !excludedIds.has(workout.id));
     const machines = machineRecords(counted, recentSince);
@@ -531,6 +542,8 @@ export function renderRecordsPage(input: RecordsInput | Promise<RecordsInput>, o
               workouts.filter((workout) => workout.machineType === machine.machineType),
               targets,
               { onSet: options.onSetTarget, onClear: options.onClearTarget },
+              rider,
+              options.onSetRider,
             ),
           )
         : [el("p", { class: "lede", text: "No rides in your history yet." })]),

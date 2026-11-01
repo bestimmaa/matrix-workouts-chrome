@@ -579,3 +579,36 @@ button.secondary:disabled { color: var(--ink-3); }
   .milestonetable tbody th { grid-row: span 3; }
   .milestonetable tr + tr { border-top: 1px solid var(--grid); }
 }
+
+/* ---- the power-skills star: last 8 weeks against your best, or against a ceiling ---- */
+.powerskills { margin-top: 18px; }
+.starhead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; border-bottom: 3px solid var(--machine); margin-bottom: 8px; }
+.starhead h3 { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin: 0; padding-bottom: 6px; }
+.startoggle { display: flex; gap: 4px; padding-bottom: 6px; }
+.startoggle .linkbutton { margin-left: 0; }
+.startoggle [aria-pressed="true"], .startoggle [aria-pressed="true"]:hover { background: var(--ink); color: var(--plane); border-color: var(--ink); }
+.starground { background: var(--plot); max-width: 560px; }
+.starchart { display: block; width: 100%; height: auto; font-family: var(--sans); }
+.starchart .ring { fill: none; stroke: var(--plot-grid); stroke-width: 1; }
+.starchart .ring.outer { stroke: var(--plot-ink); stroke-dasharray: 5 4; }
+.starchart .spoke { stroke: var(--plot-grid); stroke-width: 1; }
+.starchart .ringlabel { fill: var(--plot-ink); font: 10px var(--alt); }
+.starchart .sector { fill: var(--plot-ink); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; text-anchor: middle; opacity: 0.8; }
+.starchart .recent { fill: color-mix(in srgb, var(--s1) 28%, transparent); stroke: var(--s1); stroke-width: 2; stroke-linejoin: round; }
+.starchart .alltime { fill: none; stroke: #c2c6c9; stroke-width: 1.5; stroke-dasharray: 5 4; stroke-linejoin: round; }
+.starchart circle { fill: var(--s1); stroke: #2a2a2a; stroke-width: 2; }
+.starchart circle.past { fill: var(--machine); }
+.starchart a:focus-visible circle { stroke: #ffffff; }
+.starchart .spokelabel { fill: #ffffff; font-size: 14px; font-weight: 600; }
+.starchart .pct { fill: #c2c6c9; }
+.starchart .pct.reached { fill: var(--machine); }
+.starchart .spokedetail { fill: var(--plot-ink); font: 11px var(--alt); }
+.starlegend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-family: var(--alt); font-size: 12px; color: var(--ink-2); margin-top: 8px; }
+.starlegend > span { display: inline-flex; align-items: center; gap: 6px; }
+.starlegend .swatch { display: inline-block; width: 18px; height: 9px; }
+.starlegend .swatch.recent { background: color-mix(in srgb, var(--s1) 30%, transparent); outline: 2px solid var(--s1); outline-offset: -2px; }
+.starlegend .swatch.alltime { border-top: 2px dashed var(--ink-3); height: 0; }
+.starlegend .swatch.past { width: 9px; border-radius: 50%; background: var(--machine); }
+.powerskills .ridernote { font-family: var(--alt); font-size: 13px; color: var(--ink-2); margin: 8px 0 2px; }
+.powerskills .explain { font-family: var(--alt); font-size: 12px; color: var(--ink-3); margin: 4px 0 0; max-width: 560px; }
+.riderform select { padding: 3px 6px; font: 13px var(--alt); border: 1px solid var(--rule); border-radius: 0; background: var(--plane); color: var(--ink); }

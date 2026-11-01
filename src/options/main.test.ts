@@ -130,4 +130,24 @@ describe("the options page", () => {
     await settle();
     expect(store.has("recordTargets")).toBe(false);
   });
+  it("saves the ceiling's weight and table, refuses a pound figure, and clears it", async () => {
+    expect(field("riderWeight").value).toBe("");
+    expect(document.getElementById("clearRider")!.hidden).toBe(true);
+    field("riderWeight").value = "176";
+    (document.getElementById("riderSex") as HTMLSelectElement).value = "female";
+    document.querySelector<HTMLFormElement>("form#riderForm")!.requestSubmit();
+    await settle();
+    expect(store.get("ceilingRider")).toEqual({ weightKg: 176, sex: "female", setAt: expect.any(String) });
+
+    field("riderWeight").value = "380";
+    document.querySelector<HTMLFormElement>("form#riderForm")!.requestSubmit();
+    await settle();
+    expect(text("riderSaved")).toMatch(/30 to 200/);
+    expect((store.get("ceilingRider") as { weightKg: number }).weightKg).toBe(176);
+
+    document.getElementById("clearRider")!.click();
+    await settle();
+    expect(store.has("ceilingRider")).toBe(false);
+    expect(field("riderWeight").value).toBe("");
+  });
 });

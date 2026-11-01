@@ -28,6 +28,8 @@
       #excluded li, #targets li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--rule); }
       #excluded li button, #targets li button { margin: 0; padding: 6px 12px; font-size: 12px; }
       #excluded li button, #clearExcluded, #targets li button, #clearTargets { background: transparent; color: var(--ink); border: 1px solid var(--rule); }
+      select { width: 100%; padding: 8px; font: 15px var(--alt); border: 1px solid var(--rule); border-radius: 0; background: var(--plane); color: var(--ink); }
+      #clearRider { background: transparent; color: var(--ink); border: 1px solid var(--rule); margin-left: 8px; }
     </style>
   </head>
   <body>
@@ -99,6 +101,28 @@
         <ul id="targetList"></ul>
         <p id="targetsNone">No targets set.</p>
         <button type="button" id="clearTargets">Clear all targets</button>
+      </section>
+
+      <section id="ceiling">
+        <h2>Power ceiling</h2>
+        <p>
+          The records page's power-skills star can measure you against a ceiling: 90% of the
+          Allen and Coggan world-class watts per kilo, times your weight. A target, not a
+          measurement. Left empty, it uses the weight and sex in your Matrix profile, read
+          from the site each time and never copied here. What you save below is stored in
+          this browser only: the weight, the table, and when you set them.
+        </p>
+        <form id="riderForm" novalidate>
+          <label for="riderWeight">Weight, kg</label>
+          <input id="riderWeight" type="number" min="30" max="200" step="0.1" />
+          <label for="riderSex">Table</label>
+          <select id="riderSex">
+            <option value="male">Men's</option>
+            <option value="female">Women's</option>
+          </select>
+          <button type="submit">Save</button><button type="button" id="clearRider">Clear</button>
+          <span id="riderSaved" role="status"></span>
+        </form>
       </section>
     </main>
     <script src="options.js"></script>

@@ -85,13 +85,16 @@ for (const id of ids) {
   const latest = Math.max(...history.map((w) => w.startedAt.getTime()));
   // One ride excluded, so the page shows the excluded list and a record standing in.
   const excluded = history.filter((w) => w.id === "6a5e4fe418e8655524aebab4");
-  const view = renderRecordsPage(Promise.resolve({ workouts: history, truncated: false, excluded, targets }), {
+  // A rider set by hand, so the star opens in ceiling mode. Not anyone's real weight.
+  const rider = { weightKg: 80, sex: "male" as const, source: "settings" as const };
+  const view = renderRecordsPage(Promise.resolve({ workouts: history, truncated: false, excluded, targets, rider }), {
     onShowStock: () => {},
     onBackToRide: () => {},
     onExclude: () => {},
     onInclude: () => {},
     onSetTarget: () => {},
     onClearTarget: () => {},
+    onSetRider: () => {},
     now: new Date(latest + 21 * 86_400_000),
   });
   await new Promise((done) => setTimeout(done, 0));

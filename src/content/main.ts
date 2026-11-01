@@ -5,6 +5,7 @@ import {
   isSupportedMachine,
   loadCachedWorkouts,
   PERSIST_KEY,
+  readRider,
   WorkoutParseError,
   type HistoryResult,
   type Workout,
@@ -19,6 +20,7 @@ import { loadHistory } from "./history.js";
 import { chromeExclusions, exclude, include, loadExcluded } from "./exclusions.js";
 import { createSurface, type Surface } from "./mount.js";
 import { chromeTargets, clearTarget, loadTargets, setTarget } from "./targets.js";
+import { chromeRider, loadStoredRider, riderSetting, saveRider } from "./rider.js";
 import type { Target } from "../ui/milestones.js";
 import { observeLocation, workoutIdFromPath } from "./route.js";
 import { sendToStrava } from "./strava.js";
@@ -209,14 +211,18 @@ function showWorkout(view: Surface, id: string, workout: Workout, keepScroll = f
   renderedId = id;
 }
 
-/** Everything the records page is drawn from: the history, the exclusions, the targets. */
+/** Everything the records page is drawn from: the history, the exclusions, the targets, the rider. */
 function recordsInput(): Promise<RecordsInput> {
-  return Promise.all([ensureHistory(), loadExcluded(chromeExclusions), targets()]).then(([result, excluded, own]) => ({
-    workouts: result.workouts.filter((workout) => isSupportedMachine(workout.machineType)),
-    truncated: result.truncated,
-    excluded: excluded.map((ride) => ({ id: ride.id, startedAt: new Date(ride.startedAt) })),
-    targets: own,
-  }));
+  return Promise.all([ensureHistory(), loadExcluded(chromeExclusions), targets(), loadStoredRider(chromeRider)]).then(
+    ([result, excluded, own, stored]) => ({
+      workouts: result.workouts.filter((workout) => isSupportedMachine(workout.machineType)),
+      truncated: result.truncated,
+      excluded: excluded.map((ride) => ({ id: ride.id, startedAt: new Date(ride.startedAt) })),
+      targets: own,
+      // The profile is read from the site's session each time, never stored.
+      rider: riderSetting(stored, readRider(localStorage)),
+    }),
+  );
 }
 
 /**
@@ -243,6 +249,7 @@ function showRecords(view: Surface, backToRide?: () => void, data?: RecordsInput
     onInclude: (id) => after(include(chromeExclusions, id)),
     onSetTarget: (target) => after(setTarget(chromeTargets, target, new Date())),
     onClearTarget: (slot) => after(clearTarget(chromeTargets, slot)),
+    onSetRider: (rider) => after(saveRider(chromeRider, rider, new Date())),
     now: new Date(),
   });
   view.render(page, { keepScroll: data !== undefined });
